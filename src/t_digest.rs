@@ -112,18 +112,25 @@ mod scale_functions {
     }
 
     pub fn k2(quartile: f64, comp_factor: f64) -> f64 {
-        let n = 1.0;
-        (comp_factor / (4.0 * (n / comp_factor).log(10.0) + 24.0))
-            * (quartile / (1.0 - quartile)).log(10.0)
+        let n = 10.0;
+        (comp_factor / (4.0 * (n / comp_factor).log10() + 24.0))
+            * (quartile / (1.0 - quartile)).log10()
+    }
+
+    pub fn inv_k2(scale: f64, comp_factor: f64) -> f64 {
+        let n: f64 = 10.0;
+        let x =
+            (10.0 as f64).powf((scale * (4.0 * (n / comp_factor).log10() + 24.0)) / comp_factor);
+        return x / (1.0 + x);
     }
 
     pub fn k3(quartile: f64, comp_factor: f64) -> f64 {
         let n = 1.0;
         let factor = match quartile <= 0.5 {
-            true => (2.0 * quartile).log(10.0),
-            false => -(2.0 * (1.0 - quartile)).log(10.0),
+            true => (2.0 * quartile).log10(),
+            false => -(2.0 * (1.0 - quartile)).log10(),
         };
-        (comp_factor / (4.0 * (n / comp_factor).log(10.0) + 21.0)) * factor
+        (comp_factor / (4.0 * (n / comp_factor).log10() + 21.0)) * factor
     }
 }
 
@@ -153,7 +160,7 @@ mod test {
 
 #[cfg(test)]
 mod scale_functions_test {
-    use crate::t_digest::scale_functions::{inv_k0, inv_k1, k0, k1};
+    use crate::t_digest::scale_functions::{inv_k0, inv_k1, inv_k2, k0, k1, k2};
 
     #[test]
     fn k0_properties() {
@@ -177,6 +184,14 @@ mod scale_functions_test {
         for i in 0..100 {
             let q = i as f64 / 100.0;
             approx::assert_relative_eq!(inv_k1(k1(q, 10.0), 10.0), q);
+        }
+    }
+
+    #[test]
+    fn inv_k2_properties() {
+        for i in 0..100 {
+            let q = i as f64 / 100.0;
+            approx::assert_relative_eq!(inv_k2(k2(q, 10.0), 10.0), q);
         }
     }
 }
