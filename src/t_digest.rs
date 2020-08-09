@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::ops::Add;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -52,29 +53,38 @@ struct TDigest<'a> {
     pub compress_factor: f64,
     pub scale_func: &'a dyn Fn(f64, f64) -> f64,
     pub inverse_scale_func: &'a dyn Fn(f64, f64) -> f64,
+    pub min: f64,
+    pub max: f64,
 }
 
 impl<'a> TDigest<'a> {
     pub fn new(
         scale_func: &'a dyn Fn(f64, f64) -> f64,
         inverse_scale_func: &'a dyn Fn(f64, f64) -> f64,
+        compress_factor: f64,
     ) -> TDigest<'a> {
         TDigest {
             centroids: Vec::new(),
-            compress_factor: 1.0,
+            compress_factor,
             scale_func,
             inverse_scale_func,
+            min: f64::INFINITY,
+            max: f64::NEG_INFINITY,
         }
     }
     pub fn add_buffer(&mut self, buffer: Vec<Centroid>) {
+        self.update_limits(&buffer);
         let mut sorted = [self.centroids.clone(), buffer].concat();
         sorted.sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
         let num_elements: f64 = sorted.iter().map(|c| c.weight).sum();
         let mut q0 = 0.0;
-        let q_limit = (self.inverse_scale_func)(
-            (self.scale_func)(q0, self.compress_factor),
-            self.compress_factor,
-        );
+        let get_q_limit = |q0| {
+            (self.inverse_scale_func)(
+                (self.scale_func)(q0, self.compress_factor) + 1.0,
+                self.compress_factor,
+            )
+        };
+        let mut q_limit = get_q_limit(q0);
         let mut new_centroids = Vec::new();
 
         let mut current_centroid = sorted[0].clone();
@@ -87,6 +97,7 @@ impl<'a> TDigest<'a> {
             } else {
                 q0 = q0 + current_centroid.weight / num_elements;
                 new_centroids.push(current_centroid);
+                q_limit = get_q_limit(q0);
                 current_centroid = next_centroid;
             }
         }
@@ -95,6 +106,7 @@ impl<'a> TDigest<'a> {
     }
 
     pub fn add_cluster(&mut self, clusters: Vec<Centroid>, growth_limit: f64) {
+        self.update_limits(&clusters);
         for x in clusters {
             let min_dist = self
                 .centroids
@@ -113,8 +125,8 @@ impl<'a> TDigest<'a> {
                         .centroids
                         .iter_mut()
                         .zip(acceptable_centroids)
-                        .filter(|(c, ok)| *ok)
-                        .map(|(c, ok)| Some(c))
+                        .filter(|(_c, ok)| *ok)
+                        .map(|(c, _ok)| Some(c))
                         .collect();
 
                     if acceptable_centroids.len() > 0 {
@@ -148,7 +160,11 @@ impl<'a> TDigest<'a> {
     }
 
     pub fn weight_left(&self, target_centroid: &Centroid) -> f64 {
-        self.centroids.iter().filter(|c| c.mean < target_centroid.mean).map(|c| c.weight).sum()
+        self.centroids
+            .iter()
+            .filter(|c| c.mean < target_centroid.mean)
+            .map(|c| c.weight)
+            .sum()
     }
 
     pub fn total_weight(&self) -> f64 {
@@ -158,11 +174,82 @@ impl<'a> TDigest<'a> {
     fn k_size(&self, target_centroid: &Centroid) -> f64 {
         let q_left = self.weight_left(target_centroid);
         let q_right = q_left + target_centroid.weight / self.total_weight();
-        (self.scale_func)(q_right, self.compress_factor) - (self.scale_func)(q_left, self.compress_factor)
+        (self.scale_func)(q_right, self.compress_factor)
+            - (self.scale_func)(q_left, self.compress_factor)
     }
 
-    pub fn interpolate() {
+    pub fn interpolate(&self, quantile: f64) -> f64 {
+        let total_count = self.total_weight();
+        let mut current_quantile = 0.0;
+        for i in 0..self.centroids.len() {
+            // Quartile is located before this center of this centroid
+            let new_quantile = current_quantile + (self.centroids[i].weight / (2.0 * total_count));
+            if new_quantile > quantile {
+                if i == 0 {
+                    let prev_centroid = Centroid {
+                        mean: self.min,
+                        weight: 1.0,
+                    };
+                    return self.interpolate_centroids(
+                        &prev_centroid,
+                        &self.centroids[i],
+                        quantile,
+                        current_quantile,
+                        total_count,
+                    );
+                } else {
+                    let prev_centroid = &self.centroids[i - 1];
+                    return self.interpolate_centroids(
+                        prev_centroid,
+                        &self.centroids[i],
+                        quantile,
+                        current_quantile,
+                        total_count,
+                    );
+                }
+            }
+            current_quantile += self.centroids[i].weight / total_count;
+        }
+        let curr_centroid = Centroid {
+            mean: self.max,
+            weight: 1.0,
+        };
+        return self.interpolate_centroids(
+            &self.centroids[self.centroids.len() - 1],
+            &curr_centroid,
+            quantile,
+            current_quantile,
+            total_count,
+        );
+    }
 
+    fn interpolate_centroids(
+        &self,
+        prev_centroid: &Centroid,
+        current_centroid: &Centroid,
+        quantile: f64,
+        current_quantile: f64,
+        total_count: f64,
+    ) -> f64 {
+        let prev_quantile = current_quantile - (prev_centroid.weight / (2.0 * total_count));
+        let quantile_proportion = (quantile - prev_quantile)
+            / (current_quantile + (current_centroid.weight / (2.0 * total_count)) - prev_quantile);
+        return quantile_proportion * (current_centroid.mean - prev_centroid.mean)
+            + prev_centroid.mean;
+    }
+
+    fn update_limits(&mut self, centroids: &Vec<Centroid>) {
+        self.min = centroids
+            .iter()
+            .map(|x| x.mean)
+            .min_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap_or_else(|| self.min);
+
+        self.max = centroids
+            .iter()
+            .map(|x| x.mean)
+            .max_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap_or_else(|| self.max);
     }
 }
 
@@ -221,9 +308,9 @@ mod scale_functions {
 
 #[cfg(test)]
 mod test {
+    use crate::t_digest::scale_functions::{inv_k0, inv_k1, k0, k1};
     use crate::t_digest::Centroid;
     use crate::t_digest::TDigest;
-    use crate::t_digest::scale_functions::{k0, inv_k0};
 
     #[test]
     fn add_buffer_with_single_centroid() {
@@ -231,7 +318,7 @@ mod test {
             mean: 1.0,
             weight: 1.0,
         }];
-        let mut digest = TDigest::new(&k0, &inv_k0);
+        let mut digest = TDigest::new(&k0, &inv_k0, 1.0);
         digest.add_buffer(buffer);
 
         assert_eq!(digest.centroids.len(), 1);
@@ -242,22 +329,48 @@ mod test {
 
     #[test]
     fn add_buffer_with_multiple_centroid() {
-        let buffer = vec![Centroid {
-            mean: 1.0,
-            weight: 1.0,
-        }, Centroid {
-            mean: 2.0,
-            weight: 3.0,
-        }, Centroid {
-            mean: 0.5,
-            weight: 10.0,
-        }];
-        let mut digest = TDigest::new(&k0, &inv_k0);
+        let buffer = vec![
+            Centroid {
+                mean: 1.0,
+                weight: 1.0,
+            },
+            Centroid {
+                mean: 2.0,
+                weight: 1.0,
+            },
+            Centroid {
+                mean: 0.5,
+                weight: 1.0,
+            },
+        ];
+        let mut digest = TDigest::new(&k0, &inv_k0, 50.0);
         digest.add_buffer(buffer);
 
         println!("{:?}", digest.centroids);
+        approx::assert_relative_eq!(digest.interpolate(0.0), 0.5);
+        approx::assert_relative_eq!(digest.interpolate(0.25), 0.625);
+        approx::assert_relative_eq!(digest.interpolate(0.5), 1.0);
+        approx::assert_relative_eq!(digest.interpolate(0.75), 1.75);
+        approx::assert_relative_eq!(digest.interpolate(1.0), 2.0);
+        assert_eq!(digest.total_weight(), 3.0);
+    }
 
-        assert_eq!(digest.total_weight(), 14.0);
+    #[test]
+    fn add_buffer_with_many_centroids() {
+        let buffer = (0..1001)
+            .map(|x| Centroid {
+                mean: x as f64,
+                weight: 1.0,
+            })
+            .collect();
+        let mut digest = TDigest::new(&k1, &inv_k1, 100.0);
+        digest.add_buffer(buffer);
+
+        println!("{:?}", digest.centroids);
+        approx::assert_relative_eq!(digest.interpolate(0.0), 0.0);
+        approx::assert_relative_eq!(digest.interpolate(0.5), 500.0, epsilon = 0.0000001);
+        approx::assert_relative_eq!(digest.interpolate(1.0), 1000.0);
+        assert_eq!(digest.total_weight(), 1001.0);
     }
 }
 
