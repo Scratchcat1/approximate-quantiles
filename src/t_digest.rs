@@ -7,23 +7,6 @@ pub struct Centroid {
     pub weight: f64,
 }
 
-// struct Example {
-//     pub list: Vec<String>,
-//     pub val1: String,
-//     pub val2: String
-// }
-//
-// impl Example {
-//     pub fn do_stuff(&mut self) -> bool {
-//         self.list.iter_mut().filter(|x| self.bool_func(x));
-//         true
-//     }
-//
-//     pub fn bool_func(&self, x: &str) -> bool {
-//         return x == self.val1 || x == self.val2
-//     }
-// }
-
 impl Add for Centroid {
     type Output = Self;
 
@@ -111,14 +94,16 @@ impl<'a> TDigest<'a> {
             let min_dist = self
                 .centroids
                 .iter()
-                .map(|c| c.mean - x.mean)
+                .map(|c| (c.mean - x.mean).abs())
                 .min_by(|a, b| a.partial_cmp(b).unwrap());
             match min_dist {
                 Some(min) => {
                     let acceptable_centroids: Vec<bool> = self
                         .centroids
                         .iter()
-                        .map(|c| (c.mean - x.mean) == min && self.k_size(&(&x + c)) < 1.0)
+                        .map(|c| {
+                            (c.mean - x.mean).abs() == min && self.k_size(&(&x + c)).abs() < 1.0
+                        })
                         .collect();
 
                     let mut acceptable_centroids: Vec<Option<&mut Centroid>> = self
@@ -138,6 +123,8 @@ impl<'a> TDigest<'a> {
                                 .unwrap()
                         });
                         let first = acceptable_centroids[0].take().unwrap();
+                        first.mean = (first.mean * first.weight + x.mean * x.weight)
+                            / (first.weight + x.weight);
                         first.weight = first.weight + x.weight;
                     } else {
                         self.centroids.push(x);
@@ -146,6 +133,7 @@ impl<'a> TDigest<'a> {
                     }
                 }
                 None => {
+                    println!("{:?}", x);
                     self.centroids.push(x);
                     self.centroids
                         .sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
@@ -172,8 +160,9 @@ impl<'a> TDigest<'a> {
     }
 
     fn k_size(&self, target_centroid: &Centroid) -> f64 {
-        let q_left = self.weight_left(target_centroid);
-        let q_right = q_left + target_centroid.weight / self.total_weight();
+        let new_total_weight = self.total_weight() + target_centroid.weight;
+        let q_left = self.weight_left(target_centroid) / new_total_weight;
+        let q_right = q_left + target_centroid.weight / new_total_weight;
         (self.scale_func)(q_right, self.compress_factor)
             - (self.scale_func)(q_left, self.compress_factor)
     }
@@ -194,7 +183,7 @@ impl<'a> TDigest<'a> {
                         &prev_centroid,
                         &self.centroids[i],
                         quantile,
-                        current_quantile,
+                        prev_centroid.weight / (2.0 * total_count),
                         total_count,
                     );
                 } else {
@@ -234,6 +223,7 @@ impl<'a> TDigest<'a> {
         let prev_quantile = current_quantile - (prev_centroid.weight / (2.0 * total_count));
         let quantile_proportion = (quantile - prev_quantile)
             / (current_quantile + (current_centroid.weight / (2.0 * total_count)) - prev_quantile);
+        println!("{:?}", current_quantile);
         return quantile_proportion * (current_centroid.mean - prev_centroid.mean)
             + prev_centroid.mean;
     }
@@ -368,7 +358,112 @@ mod test {
 
         println!("{:?}", digest.centroids);
         approx::assert_relative_eq!(digest.interpolate(0.0), 0.0);
+        approx::assert_relative_eq!(digest.interpolate(0.25), 250.0, epsilon = 1.0);
         approx::assert_relative_eq!(digest.interpolate(0.5), 500.0, epsilon = 0.0000001);
+        approx::assert_relative_eq!(digest.interpolate(0.75), 750.0, epsilon = 1.0);
+        approx::assert_relative_eq!(digest.interpolate(1.0), 1000.0);
+        assert_eq!(digest.total_weight(), 1001.0);
+    }
+
+    #[test]
+    fn add_buffer_with_many_centroids_high_compression() {
+        let buffer = (0..1001)
+            .map(|x| Centroid {
+                mean: x as f64,
+                weight: 1.0,
+            })
+            .collect();
+        let mut digest = TDigest::new(&k1, &inv_k1, 20.0);
+        digest.add_buffer(buffer);
+
+        println!("{:?}", digest.centroids);
+        approx::assert_relative_eq!(digest.interpolate(0.0), 0.0);
+        approx::assert_relative_eq!(digest.interpolate(0.25), 250.0, epsilon = 1.0);
+        approx::assert_relative_eq!(digest.interpolate(0.5), 500.0, epsilon = 0.0000001);
+        approx::assert_relative_eq!(digest.interpolate(0.75), 750.0, epsilon = 1.0);
+        approx::assert_relative_eq!(digest.interpolate(1.0), 1000.0);
+        assert_eq!(digest.total_weight(), 1001.0);
+    }
+
+    #[test]
+    fn add_cluster_with_single_centroid() {
+        let cluster = vec![Centroid {
+            mean: 1.0,
+            weight: 1.0,
+        }];
+        let mut digest = TDigest::new(&k0, &inv_k0, 1.0);
+        digest.add_cluster(cluster, 3.0);
+
+        assert_eq!(digest.centroids.len(), 1);
+        assert_eq!(digest.centroids[0].mean, 1.0);
+        assert_eq!(digest.centroids[0].weight, 1.0);
+        assert_eq!(digest.total_weight(), 1.0);
+    }
+
+    #[test]
+    fn add_cluster_with_multiple_centroid() {
+        let cluster = vec![
+            Centroid {
+                mean: 1.0,
+                weight: 1.0,
+            },
+            Centroid {
+                mean: 2.0,
+                weight: 1.0,
+            },
+            Centroid {
+                mean: 0.5,
+                weight: 1.0,
+            },
+        ];
+        let mut digest = TDigest::new(&k0, &inv_k0, 50.0);
+        digest.add_cluster(cluster, 3.0);
+
+        println!("{:?}", digest.centroids);
+        approx::assert_relative_eq!(digest.interpolate(0.0), 0.5);
+        approx::assert_relative_eq!(digest.interpolate(0.25), 0.625);
+        approx::assert_relative_eq!(digest.interpolate(0.5), 1.0);
+        approx::assert_relative_eq!(digest.interpolate(0.75), 1.75);
+        approx::assert_relative_eq!(digest.interpolate(1.0), 2.0);
+        assert_eq!(digest.total_weight(), 3.0);
+    }
+
+    #[test]
+    fn add_cluster_with_many_centroids() {
+        let cluster = (0..1001)
+            .map(|x| Centroid {
+                mean: x as f64,
+                weight: 1.0,
+            })
+            .collect();
+        let mut digest = TDigest::new(&k1, &inv_k1, 100.0);
+        digest.add_cluster(cluster, 3.0);
+
+        println!("{:?}", digest.centroids);
+        approx::assert_relative_eq!(digest.interpolate(0.0), 0.0);
+        approx::assert_relative_eq!(digest.interpolate(0.25), 250.0, epsilon = 1.0);
+        approx::assert_relative_eq!(digest.interpolate(0.5), 500.0, epsilon = 0.0000001);
+        approx::assert_relative_eq!(digest.interpolate(0.75), 750.0, epsilon = 1.0);
+        approx::assert_relative_eq!(digest.interpolate(1.0), 1000.0);
+        assert_eq!(digest.total_weight(), 1001.0);
+    }
+
+    #[test]
+    fn add_cluster_with_many_centroids_high_compression() {
+        let cluster: Vec<Centroid> = (0..1001)
+            .map(|x| Centroid {
+                mean: x as f64,
+                weight: 1.0,
+            })
+            .collect();
+        let mut digest = TDigest::new(&k1, &inv_k1, 20.0);
+        digest.add_cluster(cluster, 10.0);
+
+        println!("{:?}", digest.centroids);
+        approx::assert_relative_eq!(digest.interpolate(0.0), 0.0);
+        approx::assert_relative_eq!(digest.interpolate(0.25), 250.0, epsilon = 1.0);
+        approx::assert_relative_eq!(digest.interpolate(0.5), 500.0, epsilon = 0.0000001);
+        approx::assert_relative_eq!(digest.interpolate(0.75), 750.0, epsilon = 1.0);
         approx::assert_relative_eq!(digest.interpolate(1.0), 1000.0);
         assert_eq!(digest.total_weight(), 1001.0);
     }
