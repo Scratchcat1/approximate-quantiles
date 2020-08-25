@@ -301,6 +301,7 @@ mod test {
     use crate::t_digest::scale_functions::{inv_k0, inv_k1, k0, k1};
     use crate::t_digest::Centroid;
     use crate::t_digest::TDigest;
+    use approx::assert_relative_eq;
 
     #[test]
     fn add_buffer_with_single_centroid() {
@@ -337,11 +338,11 @@ mod test {
         digest.add_buffer(buffer);
 
         println!("{:?}", digest.centroids);
-        approx::assert_relative_eq!(digest.interpolate(0.0), 0.5);
-        approx::assert_relative_eq!(digest.interpolate(0.25), 0.625);
-        approx::assert_relative_eq!(digest.interpolate(0.5), 1.0);
-        approx::assert_relative_eq!(digest.interpolate(0.75), 1.75);
-        approx::assert_relative_eq!(digest.interpolate(1.0), 2.0);
+        assert_relative_eq!(digest.interpolate(0.0), 0.5);
+        assert_relative_eq!(digest.interpolate(0.25), 0.625);
+        assert_relative_eq!(digest.interpolate(0.5), 1.0);
+        assert_relative_eq!(digest.interpolate(0.75), 1.75);
+        assert_relative_eq!(digest.interpolate(1.0), 2.0);
         assert_eq!(digest.total_weight(), 3.0);
     }
 
@@ -357,11 +358,11 @@ mod test {
         digest.add_buffer(buffer);
 
         println!("{:?}", digest.centroids);
-        approx::assert_relative_eq!(digest.interpolate(0.0), 0.0);
-        approx::assert_relative_eq!(digest.interpolate(0.25), 250.0, epsilon = 1.0);
-        approx::assert_relative_eq!(digest.interpolate(0.5), 500.0, epsilon = 0.0000001);
-        approx::assert_relative_eq!(digest.interpolate(0.75), 750.0, epsilon = 1.0);
-        approx::assert_relative_eq!(digest.interpolate(1.0), 1000.0);
+        assert_relative_eq!(digest.interpolate(0.0), 0.0);
+        assert_relative_eq!(digest.interpolate(0.25), 250.0, epsilon = 1.0);
+        assert_relative_eq!(digest.interpolate(0.5), 500.0, epsilon = 0.0000001);
+        assert_relative_eq!(digest.interpolate(0.75), 750.0, epsilon = 1.0);
+        assert_relative_eq!(digest.interpolate(1.0), 1000.0);
         assert_eq!(digest.total_weight(), 1001.0);
     }
 
@@ -377,11 +378,11 @@ mod test {
         digest.add_buffer(buffer);
 
         println!("{:?}", digest.centroids);
-        approx::assert_relative_eq!(digest.interpolate(0.0), 0.0);
-        approx::assert_relative_eq!(digest.interpolate(0.25), 250.0, epsilon = 1.0);
-        approx::assert_relative_eq!(digest.interpolate(0.5), 500.0, epsilon = 0.0000001);
-        approx::assert_relative_eq!(digest.interpolate(0.75), 750.0, epsilon = 1.0);
-        approx::assert_relative_eq!(digest.interpolate(1.0), 1000.0);
+        assert_relative_eq!(digest.interpolate(0.0), 0.0);
+        assert_relative_eq!(digest.interpolate(0.25), 250.0, epsilon = 1.0);
+        assert_relative_eq!(digest.interpolate(0.5), 500.0, epsilon = 0.0000001);
+        assert_relative_eq!(digest.interpolate(0.75), 750.0, epsilon = 1.0);
+        assert_relative_eq!(digest.interpolate(1.0), 1000.0);
         assert_eq!(digest.total_weight(), 1001.0);
     }
 
@@ -420,11 +421,11 @@ mod test {
         digest.add_cluster(cluster, 3.0);
 
         println!("{:?}", digest.centroids);
-        approx::assert_relative_eq!(digest.interpolate(0.0), 0.5);
-        approx::assert_relative_eq!(digest.interpolate(0.25), 0.625);
-        approx::assert_relative_eq!(digest.interpolate(0.5), 1.0);
-        approx::assert_relative_eq!(digest.interpolate(0.75), 1.75);
-        approx::assert_relative_eq!(digest.interpolate(1.0), 2.0);
+        assert_relative_eq!(digest.interpolate(0.0), 0.5);
+        assert_relative_eq!(digest.interpolate(0.25), 0.625);
+        assert_relative_eq!(digest.interpolate(0.5), 1.0);
+        assert_relative_eq!(digest.interpolate(0.75), 1.75);
+        assert_relative_eq!(digest.interpolate(1.0), 2.0);
         assert_eq!(digest.total_weight(), 3.0);
     }
 
@@ -440,11 +441,11 @@ mod test {
         digest.add_cluster(cluster, 3.0);
 
         println!("{:?}", digest.centroids);
-        approx::assert_relative_eq!(digest.interpolate(0.0), 0.0);
-        approx::assert_relative_eq!(digest.interpolate(0.25), 250.0, epsilon = 1.0);
-        approx::assert_relative_eq!(digest.interpolate(0.5), 500.0, epsilon = 0.0000001);
-        approx::assert_relative_eq!(digest.interpolate(0.75), 750.0, epsilon = 1.0);
-        approx::assert_relative_eq!(digest.interpolate(1.0), 1000.0);
+        assert_relative_eq!(digest.interpolate(0.0), 0.0);
+        assert_relative_eq!(digest.interpolate(0.25), 250.0, epsilon = 1.0);
+        assert_relative_eq!(digest.interpolate(0.5), 500.0, epsilon = 0.0000001);
+        assert_relative_eq!(digest.interpolate(0.75), 750.0, epsilon = 1.0);
+        assert_relative_eq!(digest.interpolate(1.0), 1000.0);
         assert_eq!(digest.total_weight(), 1001.0);
     }
 
@@ -460,11 +461,11 @@ mod test {
         digest.add_cluster(cluster, 10.0);
 
         println!("{:?}", digest.centroids);
-        approx::assert_relative_eq!(digest.interpolate(0.0), 0.0);
-        approx::assert_relative_eq!(digest.interpolate(0.25), 250.0, epsilon = 1.0);
-        approx::assert_relative_eq!(digest.interpolate(0.5), 500.0, epsilon = 0.0000001);
-        approx::assert_relative_eq!(digest.interpolate(0.75), 750.0, epsilon = 1.0);
-        approx::assert_relative_eq!(digest.interpolate(1.0), 1000.0);
+        assert_relative_eq!(digest.interpolate(0.0), 0.0);
+        assert_relative_eq!(digest.interpolate(0.25), 250.0, epsilon = 1.0);
+        assert_relative_eq!(digest.interpolate(0.5), 500.0, epsilon = 0.0000001);
+        assert_relative_eq!(digest.interpolate(0.75), 750.0, epsilon = 1.0);
+        assert_relative_eq!(digest.interpolate(1.0), 1000.0);
         assert_eq!(digest.total_weight(), 1001.0);
     }
 }
@@ -472,29 +473,30 @@ mod test {
 #[cfg(test)]
 mod scale_functions_test {
     use crate::t_digest::scale_functions::{inv_k0, inv_k1, inv_k2, inv_k3, k0, k1, k2, k3};
+    use approx::assert_relative_eq;
 
     #[test]
     fn k0_properties() {
-        approx::assert_relative_eq!(k0(0.0, 10.0), 0.0);
+        assert_relative_eq!(k0(0.0, 10.0), 0.0);
     }
 
     #[test]
     fn inv_k0_properties() {
         for i in 0..100 {
-            approx::assert_relative_eq!(inv_k0(k0(i as f64, 10.0), 10.0), i as f64);
+            assert_relative_eq!(inv_k0(k0(i as f64, 10.0), 10.0), i as f64);
         }
     }
 
     #[test]
     fn k1_properties() {
-        approx::assert_relative_eq!(k1(1.0, 10.0), 10.0 / 4.0);
+        assert_relative_eq!(k1(1.0, 10.0), 10.0 / 4.0);
     }
 
     #[test]
     fn inv_k1_properties() {
         for i in 0..100 {
             let q = i as f64 / 100.0;
-            approx::assert_relative_eq!(inv_k1(k1(q, 10.0), 10.0), q);
+            assert_relative_eq!(inv_k1(k1(q, 10.0), 10.0), q);
         }
     }
 
@@ -502,7 +504,7 @@ mod scale_functions_test {
     fn inv_k2_properties() {
         for i in 0..100 {
             let q = i as f64 / 100.0;
-            approx::assert_relative_eq!(inv_k2(k2(q, 10.0), 10.0), q);
+            assert_relative_eq!(inv_k2(k2(q, 10.0), 10.0), q);
         }
     }
 
@@ -510,7 +512,7 @@ mod scale_functions_test {
     fn inv_k3_properties() {
         for i in 1..99 {
             let q = i as f64 / 100.0;
-            approx::assert_relative_eq!(inv_k3(k3(q, 10.0), 10.0), q, epsilon = 0.01);
+            assert_relative_eq!(inv_k3(k3(q, 10.0), 10.0), q, epsilon = 0.01);
         }
     }
 }
