@@ -31,7 +31,7 @@ impl Add for &Centroid {
     }
 }
 
-struct TDigest<'a> {
+pub struct TDigest<'a> {
     pub centroids: Vec<Centroid>,
     pub compress_factor: f64,
     pub scale_func: &'a dyn Fn(f64, f64) -> f64,
@@ -133,7 +133,6 @@ impl<'a> TDigest<'a> {
                     }
                 }
                 None => {
-                    println!("{:?}", x);
                     self.centroids.push(x);
                     self.centroids
                         .sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
@@ -243,7 +242,7 @@ impl<'a> TDigest<'a> {
     }
 }
 
-mod scale_functions {
+pub mod scale_functions {
     use std::f64::consts::PI;
     pub fn k0(quartile: f64, comp_factor: f64) -> f64 {
         (quartile * comp_factor) / 2.0
