@@ -71,7 +71,7 @@ impl<'a> TDigest<'a> {
         let mut new_centroids = Vec::new();
 
         let mut current_centroid = buffer[0].clone();
-        for i in 1..(buffer.len()) {
+        for i in 1..buffer.len() {
             let next_centroid = buffer[i].clone();
             let q = q0 + (current_centroid.weight + next_centroid.weight) / num_elements;
 

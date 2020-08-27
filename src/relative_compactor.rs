@@ -41,11 +41,7 @@ impl RCSketch {
             self.buffers[rc_index].len(),
         );
         self.buffers[rc_index].sort_by(|a, b| a.partial_cmp(&b).unwrap());
-        let pivot = self.buffers[rc_index][compact_index];
-
-        let (lower, upper): (Vec<f64>, Vec<f64>) =
-            self.buffers[rc_index].iter().partition(|x| **x < pivot);
-        self.buffers[rc_index] = lower;
+        let upper = self.buffers[rc_index].split_off(compact_index);
         upper
             .iter()
             .enumerate()
