@@ -55,11 +55,11 @@ impl<'a> TDigest<'a> {
             max: f64::NEG_INFINITY,
         }
     }
-    pub fn add_buffer(&mut self, buffer: Vec<Centroid>) {
+    pub fn add_buffer(&mut self, mut buffer: Vec<Centroid>) {
         self.update_limits(&buffer);
-        let mut sorted = [self.centroids.clone(), buffer].concat();
-        sorted.sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
-        let num_elements: f64 = sorted.iter().map(|c| c.weight).sum();
+        buffer.extend(self.centroids.clone());
+        buffer.sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
+        let num_elements: f64 = buffer.iter().map(|c| c.weight).sum();
         let mut q0 = 0.0;
         let get_q_limit = |q0| {
             (self.inverse_scale_func)(
@@ -70,9 +70,9 @@ impl<'a> TDigest<'a> {
         let mut q_limit = get_q_limit(q0);
         let mut new_centroids = Vec::new();
 
-        let mut current_centroid = sorted[0].clone();
-        for i in 1..(sorted.len()) {
-            let next_centroid = sorted[i].clone();
+        let mut current_centroid = buffer[0].clone();
+        for i in 1..(buffer.len()) {
+            let next_centroid = buffer[i].clone();
             let q = q0 + (current_centroid.weight + next_centroid.weight) / num_elements;
 
             if q <= q_limit {

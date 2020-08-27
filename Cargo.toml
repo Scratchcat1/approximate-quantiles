@@ -11,6 +11,12 @@ approx = "0.3.2"
 rand = "0.7.3"
 criterion = "0.3.3"
 
+[profile.bench]
+debug = true
+
+[profile.release]
+debug = true
+
 [[bench]]
 name = "relative_compactor"
 harness = false
