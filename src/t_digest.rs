@@ -60,27 +60,27 @@ impl<'a> TDigest<'a> {
         buffer.extend(self.centroids.clone());
         buffer.sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
         let num_elements: f64 = buffer.iter().map(|c| c.weight).sum();
-        let mut q0 = 0.0;
-        let get_q_limit = |q0| {
+        let mut w0 = 0.0;
+        let get_w_limit = |w0| {
             (self.inverse_scale_func)(
-                (self.scale_func)(q0, self.compress_factor) + 1.0,
+                (self.scale_func)(w0 / num_elements, self.compress_factor) + 1.0,
                 self.compress_factor,
-            )
+            ) * num_elements
         };
-        let mut q_limit = get_q_limit(q0);
+        let mut w_limit = get_w_limit(w0);
         let mut new_centroids = Vec::new();
 
-        let mut current_centroid = buffer[0].clone();
-        for i in 1..buffer.len() {
-            let next_centroid = buffer[i].clone();
-            let q = q0 + (current_centroid.weight + next_centroid.weight) / num_elements;
+        let mut buffer_iter = buffer.into_iter();
+        let mut current_centroid = buffer_iter.next().unwrap();
+        for next_centroid in buffer_iter {
+            let w = w0 + (current_centroid.weight + next_centroid.weight);
 
-            if q <= q_limit {
+            if w <= w_limit {
                 current_centroid = current_centroid + next_centroid;
             } else {
-                q0 = q0 + current_centroid.weight / num_elements;
+                w0 += current_centroid.weight;
                 new_centroids.push(current_centroid);
-                q_limit = get_q_limit(q0);
+                w_limit = get_w_limit(w0);
                 current_centroid = next_centroid;
             }
         }
@@ -106,36 +106,46 @@ impl<'a> TDigest<'a> {
                         })
                         .collect();
 
-                    let mut acceptable_centroids: Vec<Option<&mut Centroid>> = self
+                    let acceptable_centroids: Vec<&mut Centroid> = self
                         .centroids
                         .iter_mut()
                         .zip(acceptable_centroids)
                         .filter(|(_c, ok)| *ok)
-                        .map(|(c, _ok)| Some(c))
+                        .map(|(c, _ok)| c)
                         .collect();
 
+                    assert!(
+                        acceptable_centroids.len() <= 2,
+                        "acceptable centroids: {:?}, centroid: {:?}",
+                        acceptable_centroids,
+                        x
+                    );
                     if acceptable_centroids.len() > 0 {
-                        acceptable_centroids.sort_by(|a, b| {
-                            a.as_ref()
-                                .unwrap()
-                                .mean
-                                .partial_cmp(&b.as_ref().unwrap().mean)
-                                .unwrap()
-                        });
-                        let first = acceptable_centroids[0].take().unwrap();
+                        acceptable_centroids
+                            .iter()
+                            .min_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
+                        let first = acceptable_centroids.into_iter().next().unwrap();
                         first.mean = (first.mean * first.weight + x.mean * x.weight)
                             / (first.weight + x.weight);
                         first.weight = first.weight + x.weight;
                     } else {
-                        self.centroids.push(x);
-                        self.centroids
-                            .sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
+                        match self
+                            .centroids
+                            .binary_search_by(|probe| probe.mean.partial_cmp(&x.mean).unwrap())
+                        {
+                            Ok(index) => self.centroids.insert(index, x),
+                            Err(index) => self.centroids.insert(index, x),
+                        }
                     }
                 }
                 None => {
-                    self.centroids.push(x);
-                    self.centroids
-                        .sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
+                    match self
+                        .centroids
+                        .binary_search_by(|probe| probe.mean.partial_cmp(&x.mean).unwrap())
+                    {
+                        Ok(index) => self.centroids.insert(index, x),
+                        Err(index) => self.centroids.insert(index, x),
+                    }
                 }
             }
 

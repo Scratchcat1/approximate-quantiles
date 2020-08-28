@@ -22,15 +22,31 @@ impl RCSketch {
         self.count += 1;
     }
 
+    pub fn insert_batch(&mut self, items: Vec<f64>) {
+        let length = items.len() as u64;
+        self.insert_at_rc_batch(items, 0);
+        self.count += length;
+    }
+
     pub fn insert_at_rc(&mut self, item: f64, rc_index: usize) {
         if self.buffers.len() <= rc_index {
             self.buffers.push(Vec::with_capacity(self.buffer_size));
         }
         self.buffers[rc_index].push(item);
         if self.buffers[rc_index].len() >= self.buffer_size {
-            for item in self.compact(rc_index) {
-                self.insert_at_rc(item, rc_index + 1);
-            }
+            let output_items = self.compact(rc_index);
+            self.insert_at_rc_batch(output_items, rc_index + 1);
+        }
+    }
+
+    pub fn insert_at_rc_batch(&mut self, items: Vec<f64>, rc_index: usize) {
+        if self.buffers.len() <= rc_index {
+            self.buffers.push(Vec::with_capacity(self.buffer_size));
+        }
+        self.buffers[rc_index].extend(items);
+        if self.buffers[rc_index].len() >= self.buffer_size {
+            let output_items = self.compact(rc_index);
+            self.insert_at_rc_batch(output_items, rc_index + 1);
         }
     }
 
@@ -43,10 +59,10 @@ impl RCSketch {
         self.buffers[rc_index].sort_by(|a, b| a.partial_cmp(&b).unwrap());
         let upper = self.buffers[rc_index].split_off(compact_index);
         upper
-            .iter()
+            .into_iter()
             .enumerate()
             .filter(|(pos, _value)| pos % 2 == 0)
-            .map(|(_pos, value)| *value)
+            .map(|(_pos, value)| value)
             .collect()
     }
 
@@ -107,6 +123,55 @@ mod test {
         (0..1000)
             .map(|x| sketch.insert(999.0 - x as f64))
             .for_each(drop);
+
+        println!("{:?}", sketch);
+        assert_eq!(sketch.interpolate_rank(0.0), 1);
+        assert_eq!(sketch.interpolate_rank(1.0), 2);
+        assert_relative_eq!(
+            sketch.interpolate_rank(500.0) as f64,
+            500 as f64,
+            epsilon = 10.0
+        );
+        assert_relative_eq!(
+            sketch.interpolate_rank(1000.0) as f64,
+            1000 as f64,
+            epsilon = 30.0
+        );
+        // assert_eq!(false, true);
+    }
+
+    #[test]
+    fn insert_batch_single_value() {
+        let mut sketch = RCSketch::new(64);
+        sketch.insert_batch(vec![1.0]);
+        assert_eq!(sketch.interpolate_rank(1.0), 1);
+    }
+
+    #[test]
+    fn insert_batch_multiple_values() {
+        let mut sketch = RCSketch::new(256);
+        sketch.insert_batch((0..1000).map(|x| x as f64).collect());
+
+        println!("{:?}", sketch);
+        assert_eq!(sketch.interpolate_rank(0.0), 1);
+        assert_eq!(sketch.interpolate_rank(1.0), 2);
+        assert_eq!(sketch.interpolate_rank(10.0), 11);
+        assert_relative_eq!(
+            sketch.interpolate_rank(500.0) as f64,
+            500 as f64,
+            epsilon = 10.0
+        );
+        assert_relative_eq!(
+            sketch.interpolate_rank(1000.0) as f64,
+            1000 as f64,
+            epsilon = 30.0
+        );
+    }
+
+    #[test]
+    fn insert_batch_descending_multiple_values() {
+        let mut sketch = RCSketch::new(256);
+        sketch.insert_batch((0..1000).map(|x| 999.0 - x as f64).collect());
 
         println!("{:?}", sketch);
         assert_eq!(sketch.interpolate_rank(0.0), 1);

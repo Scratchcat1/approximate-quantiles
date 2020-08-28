@@ -141,6 +141,17 @@ fn reference_vector_pushing(c: &mut Criterion) {
             }
         });
     });
+
+    c.bench_function("vector_push_add_100000", |b| {
+        b.iter(|| {
+            let mut vec = Vec::new();
+            let mut x = 0;
+            for i in 0..100000 {
+                x += i;
+                vec.push(black_box(x));
+            }
+        });
+    });
 }
 
 criterion_group!(
