@@ -91,43 +91,29 @@ impl<'a> TDigest<'a> {
     pub fn add_cluster(&mut self, clusters: Vec<Centroid>, growth_limit: f64) {
         self.update_limits(&clusters);
         for x in clusters {
-            let min_dist = self
-                .centroids
-                .iter()
-                .map(|c| (c.mean - x.mean).abs())
-                .min_by(|a, b| a.partial_cmp(b).unwrap());
-            match min_dist {
-                Some(min) => {
-                    let acceptable_centroids: Vec<bool> = self
-                        .centroids
-                        .iter()
-                        .map(|c| {
-                            (c.mean - x.mean).abs() == min && self.k_size(&(&x + c)).abs() < 1.0
-                        })
+            let close_centroids = self.find_closest_centroids(&x);
+            match close_centroids {
+                Some(indexes) => {
+                    let acceptable_centroids_ok: Vec<bool> = indexes
+                        .clone()
+                        .map(|i| self.k_size(&(&x + &self.centroids[i])).abs() < 1.0)
                         .collect();
 
-                    let acceptable_centroids: Vec<&mut Centroid> = self
-                        .centroids
+                    let acceptable_centroids: Vec<&mut Centroid> = self.centroids[indexes]
                         .iter_mut()
-                        .zip(acceptable_centroids)
+                        .zip(acceptable_centroids_ok)
                         .filter(|(_c, ok)| *ok)
                         .map(|(c, _ok)| c)
                         .collect();
 
-                    assert!(
-                        acceptable_centroids.len() <= 2,
-                        "acceptable centroids: {:?}, centroid: {:?}",
-                        acceptable_centroids,
-                        x
-                    );
                     if acceptable_centroids.len() > 0 {
-                        acceptable_centroids
-                            .iter()
-                            .min_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
-                        let first = acceptable_centroids.into_iter().next().unwrap();
+                        let first = acceptable_centroids
+                            .into_iter()
+                            .min_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap())
+                            .unwrap();
                         first.mean = (first.mean * first.weight + x.mean * x.weight)
                             / (first.weight + x.weight);
-                        first.weight = first.weight + x.weight;
+                        first.weight += x.weight;
                     } else {
                         match self
                             .centroids
@@ -156,6 +142,44 @@ impl<'a> TDigest<'a> {
         self.add_buffer(Vec::new());
     }
 
+    pub fn find_closest_centroids(&self, target: &Centroid) -> Option<std::ops::Range<usize>> {
+        let index = match self
+            .centroids
+            .binary_search_by(|probe| probe.mean.partial_cmp(&target.mean).unwrap())
+        {
+            Ok(index) => index,
+            Err(index) => index,
+        };
+        let min_lr_dist;
+        if index == 0 && self.centroids.len() == 0 {
+            return None;
+        }
+        if index == 0 {
+            min_lr_dist = self.centroids[index].mean - target.mean;
+        } else if index == self.centroids.len() {
+            min_lr_dist = self.centroids[index - 1].mean - target.mean
+        } else {
+            let lower_diff = self.centroids[index - 1].mean - target.mean;
+            let higher_diff = self.centroids[index].mean - target.mean;
+            min_lr_dist = if lower_diff <= higher_diff {
+                lower_diff
+            } else {
+                higher_diff
+            };
+        }
+        let mut left_index = index;
+        let mut right_index = index;
+        while left_index > 0 && self.centroids[left_index - 1].mean - target.mean == min_lr_dist {
+            left_index -= 1;
+        }
+        while right_index < self.centroids.len() - 1
+            && self.centroids[right_index + 1].mean - target.mean == min_lr_dist
+        {
+            right_index += 1;
+        }
+        Some(left_index..right_index)
+    }
+
     pub fn weight_left(&self, target_centroid: &Centroid) -> f64 {
         self.centroids
             .iter()
@@ -168,7 +192,7 @@ impl<'a> TDigest<'a> {
         self.centroids.iter().map(|c| c.weight).sum()
     }
 
-    fn k_size(&self, target_centroid: &Centroid) -> f64 {
+    pub fn k_size(&self, target_centroid: &Centroid) -> f64 {
         let new_total_weight = self.total_weight() + target_centroid.weight;
         let q_left = self.weight_left(target_centroid) / new_total_weight;
         let q_right = q_left + target_centroid.weight / new_total_weight;
@@ -237,7 +261,7 @@ impl<'a> TDigest<'a> {
             + prev_centroid.mean;
     }
 
-    fn update_limits(&mut self, centroids: &Vec<Centroid>) {
+    fn update_limits(&mut self, centroids: &[Centroid]) {
         self.min = centroids
             .iter()
             .map(|x| x.mean)

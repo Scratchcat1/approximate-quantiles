@@ -69,12 +69,7 @@ impl RCSketch {
     pub fn interpolate_rank(&mut self, rank_item: f64) -> u64 {
         let mut rank = 0;
         for i in 0..self.buffers.len() {
-            rank += self.buffers[i]
-                .iter()
-                .filter(|x| **x <= rank_item)
-                .collect::<Vec<&f64>>()
-                .len() as u64
-                * (1 << i);
+            rank += self.buffers[i].iter().filter(|x| **x <= rank_item).count() as u64 * (1 << i);
         }
         rank
     }
