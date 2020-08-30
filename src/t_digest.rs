@@ -1,9 +1,12 @@
 #![allow(dead_code)]
 use std::ops::Add;
 
+/// Weighted value used in `TDigest`
 #[derive(Clone, Debug, PartialEq)]
 pub struct Centroid {
+    /// Mean of the centroid
     pub mean: f64,
+    /// Weight of the centroid
     pub weight: f64,
 }
 
@@ -356,6 +359,8 @@ impl<'a> TDigest<'a> {
     }
 
     /// Update the max and min values from a slice of new centroids
+    /// # Arguments
+    /// * `centroids` The centroids to extract max and min from
     fn update_limits(&mut self, centroids: &[Centroid]) {
         self.min = centroids
             .iter()
@@ -371,6 +376,7 @@ impl<'a> TDigest<'a> {
     }
 }
 
+/// Module containing scale functions for `TDigest`
 pub mod scale_functions {
     use std::f64::consts::PI;
     pub fn k0(quantile: f64, comp_factor: f64) -> f64 {
