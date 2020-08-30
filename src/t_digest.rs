@@ -32,15 +32,27 @@ impl Add for &Centroid {
 }
 
 pub struct TDigest<'a> {
+    /// Vector of centroids
     pub centroids: Vec<Centroid>,
+    /// Compression factor to adjust the number of centroids to keep
     pub compress_factor: f64,
+    /// Scale function to map a quantile to a unit-less value to limit the size of a centroid
     pub scale_func: &'a dyn Fn(f64, f64) -> f64,
+    /// Function to invert the scale function
     pub inverse_scale_func: &'a dyn Fn(f64, f64) -> f64,
+    /// Keeps track of the maximum value observed
     pub min: f64,
+    /// Keeps track of the minimum value observed
     pub max: f64,
 }
 
 impl<'a> TDigest<'a> {
+    /// Returns a new `TDigest`
+    /// # Arguments
+    ///
+    /// * `scale_func` Scale function
+    /// * `inverse_scale_func` Inverse scale function
+    /// * `compress_factor` Compression factor
     pub fn new(
         scale_func: &'a dyn Fn(f64, f64) -> f64,
         inverse_scale_func: &'a dyn Fn(f64, f64) -> f64,
@@ -55,11 +67,25 @@ impl<'a> TDigest<'a> {
             max: f64::NEG_INFINITY,
         }
     }
+
+    /// Merge a buffer into the digest
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer` The buffer to merge into the digest
     pub fn add_buffer(&mut self, mut buffer: Vec<Centroid>) {
         self.update_limits(&buffer);
+
+        // Merge the digest centroids into the buffer since normally |buffer| > |self.centroids|
         buffer.extend(self.centroids.clone());
+        // Nothing to merge, exit
+        if buffer.len() == 0 {
+            return;
+        }
         buffer.sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
         let num_elements: f64 = buffer.iter().map(|c| c.weight).sum();
+
+        // Use weights instead of quantiles to avoid division in the main loop
         let mut w0 = 0.0;
         let get_w_limit = |w0| {
             (self.inverse_scale_func)(
@@ -67,20 +93,22 @@ impl<'a> TDigest<'a> {
                 self.compress_factor,
             ) * num_elements
         };
-        let mut w_limit = get_w_limit(w0);
+        let mut w_size_limit = get_w_limit(w0);
         let mut new_centroids = Vec::new();
 
         let mut buffer_iter = buffer.into_iter();
         let mut current_centroid = buffer_iter.next().unwrap();
         for next_centroid in buffer_iter {
-            let w = w0 + (current_centroid.weight + next_centroid.weight);
+            let w = current_centroid.weight + next_centroid.weight;
 
-            if w <= w_limit {
+            // If combined weight is below the limit merge the centroids
+            if w <= w_size_limit {
                 current_centroid = current_centroid + next_centroid;
             } else {
+                // Combined weight exceeds limit, add the current centroid to the vector and calculate the new limit
                 w0 += current_centroid.weight;
                 new_centroids.push(current_centroid);
-                w_limit = get_w_limit(w0);
+                w_size_limit = get_w_limit(w0) - w0;
                 current_centroid = next_centroid;
             }
         }
@@ -88,43 +116,70 @@ impl<'a> TDigest<'a> {
         self.centroids = new_centroids;
     }
 
+    /// Add centroids to the digest via clustering
+    ///
+    /// # Arguments
+    /// * `clusters` Centroids to add to the digest
+    /// * `growth_limit` Factor to limit excessive growth of the digest by merging periodically
     pub fn add_cluster(&mut self, clusters: Vec<Centroid>, growth_limit: f64) {
         self.update_limits(&clusters);
         for x in clusters {
             let close_centroids = self.find_closest_centroids(&x);
             match close_centroids {
                 Some(indexes) => {
-                    let acceptable_centroids_ok: Vec<bool> = indexes
-                        .clone()
-                        .map(|i| self.k_size(&(&x + &self.centroids[i])).abs() < 1.0)
-                        .collect();
+                    // let acceptable_centroids_ok: Vec<bool> = indexes
+                    //     .clone()
+                    //     .map(|i| self.k_size(&(&x + &self.centroids[i])).abs() < 1.0)
+                    //     .collect();
 
-                    let acceptable_centroids: Vec<&mut Centroid> = self.centroids[indexes]
-                        .iter_mut()
-                        .zip(acceptable_centroids_ok)
-                        .filter(|(_c, ok)| *ok)
-                        .map(|(c, _ok)| c)
-                        .collect();
+                    // let acceptable_centroids: Vec<&mut Centroid> = self.centroids[indexes]
+                    //     .iter_mut()
+                    //     .zip(acceptable_centroids_ok)
+                    //     .filter(|(_c, ok)| *ok)
+                    //     .map(|(c, _ok)| c)
+                    //     .collect();
 
-                    if acceptable_centroids.len() > 0 {
-                        let first = acceptable_centroids
-                            .into_iter()
-                            .min_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap())
-                            .unwrap();
-                        first.mean = (first.mean * first.weight + x.mean * x.weight)
-                            / (first.weight + x.weight);
-                        first.weight += x.weight;
-                    } else {
-                        match self
-                            .centroids
-                            .binary_search_by(|probe| probe.mean.partial_cmp(&x.mean).unwrap())
-                        {
-                            Ok(index) => self.centroids.insert(index, x),
-                            Err(index) => self.centroids.insert(index, x),
+                    // Find the index of a centroid with space to merge the current centroid
+                    // selecting the one with the minimum weight
+                    let mut min_acceptable_index = None;
+                    for index in indexes {
+                        if self.k_size(&(&x + &self.centroids[index])).abs() < 1.0 {
+                            match min_acceptable_index {
+                                None => min_acceptable_index = Some(index),
+                                Some(other_index) => {
+                                    if self.centroids[other_index].mean
+                                        * self.centroids[other_index].weight
+                                        > self.centroids[index].mean * self.centroids[index].weight
+                                    {
+                                        min_acceptable_index = Some(index)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    match min_acceptable_index {
+                        Some(index) => {
+                            // Merge the current centroid with the centroid in the digest
+                            let mut merge = &mut self.centroids[index];
+                            merge.mean = (merge.mean * merge.weight + x.mean * x.weight)
+                                / (merge.weight + x.weight);
+                            merge.weight += x.weight;
+                        }
+                        None => {
+                            // No suitable centroid in the digest was found, insert the current centroid into the digest
+                            match self
+                                .centroids
+                                .binary_search_by(|probe| probe.mean.partial_cmp(&x.mean).unwrap())
+                            {
+                                Ok(index) => self.centroids.insert(index, x),
+                                Err(index) => self.centroids.insert(index, x),
+                            }
                         }
                     }
                 }
                 None => {
+                    // No suitable centroid in the digest was found, insert the current centroid into the digest
                     match self
                         .centroids
                         .binary_search_by(|probe| probe.mean.partial_cmp(&x.mean).unwrap())
@@ -135,6 +190,7 @@ impl<'a> TDigest<'a> {
                 }
             }
 
+            // Prevent excess growth with particular insertion patterns by periodically merging
             if self.centroids.len() > (growth_limit * self.compress_factor) as usize {
                 self.add_buffer(Vec::new());
             }
@@ -142,7 +198,18 @@ impl<'a> TDigest<'a> {
         self.add_buffer(Vec::new());
     }
 
+    /// Find the range of indexes in the digest which cover the centroids which all have the minimum distance
+    /// to the mean of the target centroid
+    /// # Arguments
+    ///
+    /// * `target` Centroid to compare the mean of
     pub fn find_closest_centroids(&self, target: &Centroid) -> Option<std::ops::Range<usize>> {
+        if self.centroids.len() == 0 {
+            // No centroids are present so there are no closest centroids
+            return None;
+        }
+
+        // Find the index of centroids closest to the target centroid
         let index = match self
             .centroids
             .binary_search_by(|probe| probe.mean.partial_cmp(&target.mean).unwrap())
@@ -151,14 +218,19 @@ impl<'a> TDigest<'a> {
             Err(index) => index,
         };
         let min_lr_dist;
-        if index == 0 && self.centroids.len() == 0 {
-            return None;
-        }
+        let mut left_index = index;
+        let mut right_index = index + 1;
         if index == 0 {
+            // Target is smallest centroid, min dist is to the right
             min_lr_dist = self.centroids[index].mean - target.mean;
         } else if index == self.centroids.len() {
-            min_lr_dist = self.centroids[index - 1].mean - target.mean
+            // Target is largest centroid, min dist is to the left
+            min_lr_dist = self.centroids[index - 1].mean - target.mean;
+            // Closest centroid is the last one
+            left_index = index - 1;
+            right_index = index;
         } else {
+            // Determine if the minimum dist is to the left or the right
             let lower_diff = self.centroids[index - 1].mean - target.mean;
             let higher_diff = self.centroids[index].mean - target.mean;
             min_lr_dist = if lower_diff <= higher_diff {
@@ -167,8 +239,9 @@ impl<'a> TDigest<'a> {
                 higher_diff
             };
         }
-        let mut left_index = index;
-        let mut right_index = index;
+
+        // Handle the case where there are multiple centroids with the same mean by shifting the indexes
+        // to include all with the minimum distance to the target
         while left_index > 0 && self.centroids[left_index - 1].mean - target.mean == min_lr_dist {
             left_index -= 1;
         }
@@ -180,6 +253,10 @@ impl<'a> TDigest<'a> {
         Some(left_index..right_index)
     }
 
+    /// Calculate the weight of all centroids in the digest which have a lower mean than the target
+    /// # Arguments
+    ///
+    /// * `target_centroid` Centroid to compare to
     pub fn weight_left(&self, target_centroid: &Centroid) -> f64 {
         self.centroids
             .iter()
@@ -188,26 +265,35 @@ impl<'a> TDigest<'a> {
             .sum()
     }
 
+    /// Get the total weight of the digest
     pub fn total_weight(&self) -> f64 {
         self.centroids.iter().map(|c| c.weight).sum()
     }
 
+    /// Calculate the k_size for the target centroid
+    /// This is the scaled different between the left and right quartile of the centroid
     pub fn k_size(&self, target_centroid: &Centroid) -> f64 {
         let new_total_weight = self.total_weight() + target_centroid.weight;
+
+        // Calculate the left and right quartiles
         let q_left = self.weight_left(target_centroid) / new_total_weight;
         let q_right = q_left + target_centroid.weight / new_total_weight;
         (self.scale_func)(q_right, self.compress_factor)
             - (self.scale_func)(q_left, self.compress_factor)
     }
 
+    /// Estimate the value at a particular quantile
+    /// # Arguments
+    /// * `quantile` The quantile to estimate the value of
     pub fn interpolate(&self, quantile: f64) -> f64 {
         let total_count = self.total_weight();
         let mut current_quantile = 0.0;
         for i in 0..self.centroids.len() {
-            // Quartile is located before this center of this centroid
+            // Quantile is located before this center of this centroid
             let new_quantile = current_quantile + (self.centroids[i].weight / (2.0 * total_count));
             if new_quantile > quantile {
                 if i == 0 {
+                    // Quantile is between the minimum value and the midpoint of the first centroid
                     let prev_centroid = Centroid {
                         mean: self.min,
                         weight: 1.0,
@@ -220,6 +306,7 @@ impl<'a> TDigest<'a> {
                         total_count,
                     );
                 } else {
+                    // Quantile is bewteen the previous and current centroid
                     let prev_centroid = &self.centroids[i - 1];
                     return self.interpolate_centroids(
                         prev_centroid,
@@ -232,6 +319,7 @@ impl<'a> TDigest<'a> {
             }
             current_quantile += self.centroids[i].weight / total_count;
         }
+        // Quantile is between the midpoint of the last centroid and the maximum value
         let curr_centroid = Centroid {
             mean: self.max,
             weight: 1.0,
@@ -245,6 +333,13 @@ impl<'a> TDigest<'a> {
         );
     }
 
+    /// Estimate the value at a particular quantile between two centroids
+    /// # Arguments
+    /// * `prev_centroid` Previous centroid
+    /// * `current_centroid` Current centroid
+    /// * `quantile` the quantile to estimate the value of
+    /// * `current_quantile` the quantile on the left of the current centroid
+    /// * `total_count` the total weight in the digest
     fn interpolate_centroids(
         &self,
         prev_centroid: &Centroid,
@@ -256,11 +351,11 @@ impl<'a> TDigest<'a> {
         let prev_quantile = current_quantile - (prev_centroid.weight / (2.0 * total_count));
         let quantile_proportion = (quantile - prev_quantile)
             / (current_quantile + (current_centroid.weight / (2.0 * total_count)) - prev_quantile);
-        println!("{:?}", current_quantile);
         return quantile_proportion * (current_centroid.mean - prev_centroid.mean)
             + prev_centroid.mean;
     }
 
+    /// Update the max and min values from a slice of new centroids
     fn update_limits(&mut self, centroids: &[Centroid]) {
         self.min = centroids
             .iter()
@@ -278,26 +373,26 @@ impl<'a> TDigest<'a> {
 
 pub mod scale_functions {
     use std::f64::consts::PI;
-    pub fn k0(quartile: f64, comp_factor: f64) -> f64 {
-        (quartile * comp_factor) / 2.0
+    pub fn k0(quantile: f64, comp_factor: f64) -> f64 {
+        (quantile * comp_factor) / 2.0
     }
 
     pub fn inv_k0(scale: f64, comp_factor: f64) -> f64 {
         (scale * 2.0) / comp_factor
     }
 
-    pub fn k1(quartile: f64, comp_factor: f64) -> f64 {
-        (comp_factor / (2.0 * PI)) * (2.0 * quartile - 1.0).asin()
+    pub fn k1(quantile: f64, comp_factor: f64) -> f64 {
+        (comp_factor / (2.0 * PI)) * (2.0 * quantile - 1.0).asin()
     }
 
     pub fn inv_k1(scale: f64, comp_factor: f64) -> f64 {
         (1.0 + (2.0 * PI * scale / comp_factor).sin()) / 2.0
     }
 
-    pub fn k2(quartile: f64, comp_factor: f64) -> f64 {
+    pub fn k2(quantile: f64, comp_factor: f64) -> f64 {
         let n = 10.0;
         (comp_factor / (4.0 * (n / comp_factor).log10() + 24.0))
-            * (quartile / (1.0 - quartile)).log10()
+            * (quantile / (1.0 - quantile)).log10()
     }
 
     pub fn inv_k2(scale: f64, comp_factor: f64) -> f64 {
@@ -307,11 +402,11 @@ pub mod scale_functions {
         return x / (1.0 + x);
     }
 
-    pub fn k3(quartile: f64, comp_factor: f64) -> f64 {
+    pub fn k3(quantile: f64, comp_factor: f64) -> f64 {
         let n = 10.0;
-        let factor = match quartile <= 0.5 {
-            true => (2.0 * quartile).log10(),
-            false => -(2.0 * (1.0 - quartile)).log10(),
+        let factor = match quantile <= 0.5 {
+            true => (2.0 * quantile).log10(),
+            false => -(2.0 * (1.0 - quantile)).log10(),
         };
         (comp_factor / (4.0 * (n / comp_factor).log10() + 21.0)) * factor
     }

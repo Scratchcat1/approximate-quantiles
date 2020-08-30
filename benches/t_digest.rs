@@ -139,9 +139,10 @@ fn t_digest_util(c: &mut Criterion) {
             .collect();
         let mut digest = TDigest::new(&k1, &inv_k1, 20.0);
         digest.add_buffer(buffer);
+        let mut iterator = 0..;
         b.iter(|| {
             digest.k_size(black_box(&Centroid {
-                mean: 50000.0,
+                mean: iterator.next().unwrap() as f64,
                 weight: 1.0,
             }));
         })
@@ -156,9 +157,10 @@ fn t_digest_util(c: &mut Criterion) {
             .collect();
         let mut digest = TDigest::new(&k1, &inv_k1, 20.0);
         digest.add_buffer(buffer);
+        let mut iterator = 0..;
         b.iter(|| {
             digest.find_closest_centroids(black_box(&Centroid {
-                mean: 50000.0,
+                mean: iterator.next().unwrap() as f64,
                 weight: 1.0,
             }));
         })
