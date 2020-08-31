@@ -238,6 +238,7 @@ fn reference_benchmarks(c: &mut Criterion) {
             for centroid in buffer {
                 acc = acc + centroid.weight;
             }
+            assert!(acc > 10.0);
         });
     });
 
@@ -273,6 +274,70 @@ fn reference_benchmarks(c: &mut Criterion) {
                     acc_buffer.clear();
                 }
             }
+        });
+    });
+
+    c.bench_function("mergesort_buffered_dod_centroid_sum_100000", |b| {
+        b.iter(|| {
+            let mut buffer: Vec<Centroid> = (0..black_box(100000))
+                .map(|x| Centroid {
+                    mean: x as f64,
+                    weight: 1.0,
+                })
+                .collect();
+            buffer.sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
+            let mut acc = Centroid {
+                mean: 0.0,
+                weight: 0.0,
+            };
+            let means: Vec<f64> = (0..100000).map(|c| c as f64).collect();
+            let weights: Vec<f64> = (0..100000).map(|c| c as f64).collect();
+            let mut acc_mean_buffer = Vec::new();
+            let mut acc_weight_buffer = Vec::new();
+            for i in 0..means.len() {
+                acc_mean_buffer.push(means[i]);
+                acc_weight_buffer.push(weights[i]);
+
+                if acc_mean_buffer.len() == 64 {
+                    let mut new_weight = 0.0;
+                    let mut new_sum = 0.0;
+                    for k in 0..acc_mean_buffer.len() {
+                        new_weight += acc_weight_buffer[k];
+                    }
+                    for k in 0..acc_mean_buffer.len() {
+                        new_sum += acc_weight_buffer[k] * acc_mean_buffer[k];
+                    }
+                    acc = acc
+                        + Centroid {
+                            mean: new_sum / new_weight,
+                            weight: new_weight,
+                        };
+                    acc_mean_buffer.clear();
+                    acc_weight_buffer.clear();
+                }
+            }
+        });
+    });
+
+    c.bench_function("mergesort_dod_centroid_sum_100000", |b| {
+        b.iter(|| {
+            let mut buffer: Vec<Centroid> = (0..black_box(100000))
+                .map(|x| Centroid {
+                    mean: x as f64,
+                    weight: 1.0,
+                })
+                .collect();
+            buffer.sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
+            let means: Vec<f64> = (0..100000).map(|c| c as f64).collect();
+            let weights: Vec<f64> = (0..100000).map(|c| c as f64).collect();
+            let mut acc_sum = 0.0;
+            let mut acc_weight = 0.0;
+            for i in 0..means.len() {
+                acc_sum += means[i] * weights[i];
+                acc_weight += weights[i];
+            }
+            assert!(acc_sum >= 0.0);
+            assert!(acc_weight >= 0.0);
         });
     });
 
