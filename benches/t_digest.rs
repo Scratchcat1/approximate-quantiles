@@ -167,7 +167,7 @@ fn t_digest_util(c: &mut Criterion) {
     });
 }
 
-fn reference_vector_pushing(c: &mut Criterion) {
+fn reference_benchmarks(c: &mut Criterion) {
     c.bench_function("vector_push_single", |b| {
         let mut vec = Vec::new();
         b.iter(|| {
@@ -212,6 +212,88 @@ fn reference_vector_pushing(c: &mut Criterion) {
             }
         });
     });
+
+    c.bench_function("mergesort_centroids_100000", |b| {
+        b.iter(|| {
+            let mut buffer: Vec<Centroid> = (0..black_box(100000))
+                .map(|x| Centroid {
+                    mean: x as f64,
+                    weight: 1.0,
+                })
+                .collect();
+            buffer.sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
+        });
+    });
+
+    c.bench_function("mergesort_sum_100000", |b| {
+        b.iter(|| {
+            let mut buffer: Vec<Centroid> = (0..black_box(100000))
+                .map(|x| Centroid {
+                    mean: x as f64,
+                    weight: 1.0,
+                })
+                .collect();
+            buffer.sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
+            let mut acc = 0.0;
+            for centroid in buffer {
+                acc = acc + centroid.weight;
+            }
+        });
+    });
+
+    c.bench_function("mergesort_buffered_centroid_sum_100000", |b| {
+        b.iter(|| {
+            let mut buffer: Vec<Centroid> = (0..black_box(100000))
+                .map(|x| Centroid {
+                    mean: x as f64,
+                    weight: 1.0,
+                })
+                .collect();
+            buffer.sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
+            let mut acc = Centroid {
+                mean: 0.0,
+                weight: 0.0,
+            };
+            let mut acc_buffer = Vec::new();
+            for centroid in buffer {
+                acc_buffer.push(centroid);
+
+                if acc_buffer.len() == 4 {
+                    let mut new_weight = 0.0;
+                    let mut new_sum = 0.0;
+                    for c in &acc_buffer {
+                        new_weight += c.weight;
+                        new_sum += c.weight * c.mean;
+                    }
+                    acc = acc
+                        + Centroid {
+                            mean: new_sum / new_weight,
+                            weight: new_weight,
+                        };
+                    acc_buffer.clear();
+                }
+            }
+        });
+    });
+
+    c.bench_function("mergesort_sum_centroids_100000", |b| {
+        b.iter(|| {
+            let mut buffer: Vec<Centroid> = (0..black_box(100000))
+                .map(|x| Centroid {
+                    mean: x as f64,
+                    weight: 1.0,
+                })
+                .collect();
+            buffer.sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
+            let mut acc = Centroid {
+                mean: 0.0,
+                weight: 0.0,
+            };
+            for centroid in buffer {
+                acc = acc + centroid;
+            }
+        });
+    });
 }
 
 criterion_group!(
@@ -219,6 +301,6 @@ criterion_group!(
     t_digest_add_buffer_in_order,
     t_digest_add_cluster_in_order,
     t_digest_util,
-    reference_vector_pushing
+    reference_benchmarks
 );
 criterion_main!(benches);
