@@ -88,7 +88,7 @@ impl<'a> TDigest<'a> {
         buffer.sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
         let num_elements: f64 = buffer.iter().map(|c| c.weight).sum();
 
-        // Use weights instead of quantiles to avoid division in the main loop
+        // Use weights instead of quantiles to minimise division in the main loop
         let mut w0 = 0.0;
         let get_w_limit = |w0| {
             (self.inverse_scale_func)(
@@ -102,48 +102,32 @@ impl<'a> TDigest<'a> {
         let mut buffer_iter = buffer.into_iter();
         let first_centroid = buffer_iter.next().unwrap();
 
-        // Keep track of the centroids which can be merged together instead of adding together each loop.
-        // This minimises the number of calculations in the hot loop and may allow the merging to be vectorised.
-        // The centroids are merged as soon as their combined weight would exceed the limit
         let mut mergeable_weight = first_centroid.weight;
-        let mut mergeable_centroids = vec![first_centroid];
+        let mut mergeable_sum = first_centroid.mean * first_centroid.weight;
         for next_centroid in buffer_iter {
             let new_w = mergeable_weight + next_centroid.weight;
 
             // If combined weight is below the limit merge the centroids
             if new_w <= w_size_limit {
                 mergeable_weight = new_w;
-                mergeable_centroids.push(next_centroid);
+                mergeable_sum += next_centroid.mean * next_centroid.weight;
             } else {
                 // Combined weight exceeds limit, add the current centroid to the vector and calculate the new limit
                 w0 += mergeable_weight;
-                new_centroids.push(Self::merge_centroids(
-                    mergeable_weight,
-                    &mergeable_centroids,
-                ));
+                new_centroids.push(Centroid {
+                    mean: mergeable_sum / mergeable_weight,
+                    weight: mergeable_weight,
+                });
                 w_size_limit = get_w_limit(w0) - w0;
-                mergeable_centroids.clear();
                 mergeable_weight = next_centroid.weight;
-                mergeable_centroids.push(next_centroid);
+                mergeable_sum = next_centroid.mean * next_centroid.weight;
             }
         }
-        new_centroids.push(Self::merge_centroids(
-            mergeable_weight,
-            &mergeable_centroids,
-        ));
+        new_centroids.push(Centroid {
+            mean: mergeable_sum / mergeable_weight,
+            weight: mergeable_weight,
+        });
         self.centroids = new_centroids;
-    }
-
-    /// Merge a buffer of centroids into a single one
-    /// # Arguments
-    /// * `weight` Total weight of the centroids
-    /// * `buffer` Centroids to merge
-    fn merge_centroids(weight: f64, buffer: &[Centroid]) -> Centroid {
-        let new_sum: f64 = buffer.iter().map(|c| c.mean * c.weight).sum();
-        Centroid {
-            mean: new_sum / weight,
-            weight: weight,
-        }
     }
 
     /// Add centroids to the digest via clustering

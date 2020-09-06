@@ -234,11 +234,14 @@ fn reference_benchmarks(c: &mut Criterion) {
                 })
                 .collect();
             buffer.sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
-            let mut acc = 0.0;
+            let mut weight = 0.0;
+            let mut sum = 0.0;
             for centroid in buffer {
-                acc = acc + centroid.weight;
+                weight += centroid.weight;
+                sum += centroid.weight * centroid.mean;
             }
-            assert!(acc > 10.0);
+            assert!(sum > 10.0);
+            assert!(weight > 10.0);
         });
     });
 
@@ -259,7 +262,7 @@ fn reference_benchmarks(c: &mut Criterion) {
             for centroid in buffer {
                 acc_buffer.push(centroid);
 
-                if acc_buffer.len() == 4 {
+                if acc_buffer.len() == 16 {
                     let mut new_weight = 0.0;
                     let mut new_sum = 0.0;
                     for c in &acc_buffer {
@@ -298,7 +301,7 @@ fn reference_benchmarks(c: &mut Criterion) {
                 acc_mean_buffer.push(means[i]);
                 acc_weight_buffer.push(weights[i]);
 
-                if acc_mean_buffer.len() == 64 {
+                if acc_mean_buffer.len() == 16 {
                     let mut new_weight = 0.0;
                     let mut new_sum = 0.0;
                     for k in 0..acc_mean_buffer.len() {
