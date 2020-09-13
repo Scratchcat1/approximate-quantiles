@@ -8,7 +8,7 @@ fn t_digest_add_buffer_in_order(c: &mut Criterion) {
     c.bench_function("t_digest_add_buffer_in_order_single", |b| {
         let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
         b.iter(|| {
-            digest.add_buffer(vec![Centroid {
+            digest.add_centroid_buffer(vec![Centroid {
                 mean: black_box(2.0),
                 weight: 1.0,
             }]);
@@ -23,7 +23,7 @@ fn t_digest_add_buffer_in_order(c: &mut Criterion) {
                 })
                 .collect();
             let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
-            digest.add_buffer(buffer);
+            digest.add_centroid_buffer(buffer);
         })
     });
 
@@ -36,7 +36,7 @@ fn t_digest_add_buffer_in_order(c: &mut Criterion) {
                 })
                 .collect();
             let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
-            digest.add_buffer(buffer);
+            digest.add_centroid_buffer(buffer);
         })
     });
 
@@ -49,7 +49,7 @@ fn t_digest_add_buffer_in_order(c: &mut Criterion) {
                 })
                 .collect();
             let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
-            digest.add_buffer(buffer);
+            digest.add_centroid_buffer(buffer);
         })
     });
 }
@@ -124,7 +124,7 @@ fn t_digest_util(c: &mut Criterion) {
             })
             .collect();
         let mut digest = TDigest::new(&k1, &inv_k1, 20.0);
-        digest.add_buffer(buffer);
+        digest.add_centroid_buffer(buffer);
         b.iter(|| {
             black_box(digest.total_weight());
         })
@@ -138,7 +138,7 @@ fn t_digest_util(c: &mut Criterion) {
             })
             .collect();
         let mut digest = TDigest::new(&k1, &inv_k1, 20.0);
-        digest.add_buffer(buffer);
+        digest.add_centroid_buffer(buffer);
         let mut iterator = 0..;
         b.iter(|| {
             digest.k_size(black_box(&Centroid {
@@ -156,7 +156,7 @@ fn t_digest_util(c: &mut Criterion) {
             })
             .collect();
         let mut digest = TDigest::new(&k1, &inv_k1, 20.0);
-        digest.add_buffer(buffer);
+        digest.add_centroid_buffer(buffer);
         let mut iterator = 0..;
         b.iter(|| {
             digest.find_closest_centroids(black_box(&Centroid {
