@@ -15,7 +15,7 @@ pub trait Digest {
 
     /// Estimate the quantile of an item
     /// # Arguments
-    /// * `value` Item to estimate the quantile of
+    /// * `value` Item to estimate the quantile of.
     fn est_quantile_at_value(&self, value: f64) -> f64;
 
     /// Estimate the value at a particular quantile

@@ -1,6 +1,7 @@
 use approximate_quantiles::t_digest::{
+    centroid::Centroid,
     scale_functions::{inv_k1, k1},
-    Centroid, TDigest,
+    t_digest::TDigest,
 };
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
