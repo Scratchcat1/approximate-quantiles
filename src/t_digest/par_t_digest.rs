@@ -3,16 +3,26 @@ use crate::t_digest::t_digest::TDigest;
 use crate::traits::Digest;
 use rayon::prelude::*;
 
-pub struct ParTDigest<'a> {
-    pub digest: TDigest<'a>,
-    threads: u32,
+pub struct ParTDigest<C, F, G>
+where
+    F: Fn(f64, f64) -> f64 + Sync,
+    G: Fn(f64, f64) -> f64 + Sync,
+    C: Fn() -> TDigest<F, G> + Sync,
+{
+    pub digest: TDigest<F, G>,
+    threads: usize,
     pub buffer: Vec<f64>,
     capacity: usize,
-    creator: &'a dyn Fn() -> TDigest<'a>,
+    creator: C,
 }
 
-impl<'a> ParTDigest<'_> {
-    pub fn new(threads: u32, capacity: usize, creator: &'a dyn Fn() -> TDigest<'a>) -> ParTDigest {
+impl<C, F, G> ParTDigest<C, F, G>
+where
+    F: Fn(f64, f64) -> f64 + Sync,
+    G: Fn(f64, f64) -> f64 + Sync,
+    C: Fn() -> TDigest<F, G> + Sync,
+{
+    pub fn new(threads: usize, capacity: usize, creator: C) -> ParTDigest<C, F, G> {
         ParTDigest {
             digest: creator(),
             threads,
@@ -25,7 +35,7 @@ impl<'a> ParTDigest<'_> {
     pub fn flush(&mut self) {
         let elements: Vec<f64> = self.buffer.drain(0..self.buffer.len()).collect();
         let centroids: Vec<Centroid> = elements
-            .chunks(128)
+            .chunks(self.threads)
             .collect::<Vec<&[f64]>>()
             .par_iter()
             .map(|chunk| {
@@ -43,7 +53,12 @@ impl<'a> ParTDigest<'_> {
     }
 }
 
-impl Digest for ParTDigest<'_> {
+impl<C, F, G> Digest for ParTDigest<C, F, G>
+where
+    F: Fn(f64, f64) -> f64 + Sync + Sync,
+    G: Fn(f64, f64) -> f64 + Sync + Sync,
+    C: Fn() -> TDigest<F, G> + Sync,
+{
     fn add(&mut self, item: f64) {
         self.buffer.push(item);
         if self.buffer.len() > self.capacity {

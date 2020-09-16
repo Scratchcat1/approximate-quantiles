@@ -2,22 +2,30 @@
 use crate::t_digest::centroid::Centroid;
 use crate::traits::Digest;
 
-pub struct TDigest<'a> {
+pub struct TDigest<F, G>
+where
+    F: Fn(f64, f64) -> f64,
+    G: Fn(f64, f64) -> f64,
+{
     /// Vector of centroids
     pub centroids: Vec<Centroid>,
     /// Compression factor to adjust the number of centroids to keep
     pub compress_factor: f64,
     /// Scale function to map a quantile to a unit-less value to limit the size of a centroid
-    pub scale_func: &'a dyn Fn(f64, f64) -> f64,
+    pub scale_func: F,
     /// Function to invert the scale function
-    pub inverse_scale_func: &'a dyn Fn(f64, f64) -> f64,
+    pub inverse_scale_func: G,
     /// Keeps track of the minimum value observed
     pub min: f64,
     /// Keeps track of the maximum value observed
     pub max: f64,
 }
 
-impl<'a> Digest for TDigest<'a> {
+impl<F, G> Digest for TDigest<F, G>
+where
+    F: Fn(f64, f64) -> f64,
+    G: Fn(f64, f64) -> f64,
+{
     fn add(&mut self, item: f64) {
         self.add_centroid_buffer(vec![Centroid {
             mean: item,
@@ -140,18 +148,18 @@ impl<'a> Digest for TDigest<'a> {
     }
 }
 
-impl<'a> TDigest<'a> {
+impl<F, G> TDigest<F, G>
+where
+    F: Fn(f64, f64) -> f64,
+    G: Fn(f64, f64) -> f64,
+{
     /// Returns a new `TDigest`
     /// # Arguments
     ///
     /// * `scale_func` Scale function
     /// * `inverse_scale_func` Inverse scale function
     /// * `compress_factor` Compression factor
-    pub fn new(
-        scale_func: &'a dyn Fn(f64, f64) -> f64,
-        inverse_scale_func: &'a dyn Fn(f64, f64) -> f64,
-        compress_factor: f64,
-    ) -> TDigest<'a> {
+    pub fn new(scale_func: F, inverse_scale_func: G, compress_factor: f64) -> TDigest<F, G> {
         TDigest {
             centroids: Vec::new(),
             compress_factor,
