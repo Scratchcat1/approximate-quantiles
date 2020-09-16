@@ -47,3 +47,50 @@ pub fn inv_k3(scale: f64, comp_factor: f64) -> f64 {
         false => q_low,
     }
 }
+
+#[cfg(test)]
+mod scale_functions_test {
+    use crate::t_digest::scale_functions::{inv_k0, inv_k1, inv_k2, inv_k3, k0, k1, k2, k3};
+    use approx::assert_relative_eq;
+
+    #[test]
+    fn k0_properties() {
+        assert_relative_eq!(k0(0.0, 10.0), 0.0);
+    }
+
+    #[test]
+    fn inv_k0_properties() {
+        for i in 0..100 {
+            assert_relative_eq!(inv_k0(k0(i as f64, 10.0), 10.0), i as f64);
+        }
+    }
+
+    #[test]
+    fn k1_properties() {
+        assert_relative_eq!(k1(1.0, 10.0), 10.0 / 4.0);
+    }
+
+    #[test]
+    fn inv_k1_properties() {
+        for i in 0..100 {
+            let q = i as f64 / 100.0;
+            assert_relative_eq!(inv_k1(k1(q, 10.0), 10.0), q);
+        }
+    }
+
+    #[test]
+    fn inv_k2_properties() {
+        for i in 0..100 {
+            let q = i as f64 / 100.0;
+            assert_relative_eq!(inv_k2(k2(q, 10.0), 10.0), q);
+        }
+    }
+
+    #[test]
+    fn inv_k3_properties() {
+        for i in 1..99 {
+            let q = i as f64 / 100.0;
+            assert_relative_eq!(inv_k3(k3(q, 10.0), 10.0), q, epsilon = 0.01);
+        }
+    }
+}

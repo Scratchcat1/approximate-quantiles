@@ -11,9 +11,9 @@ pub struct TDigest<'a> {
     pub scale_func: &'a dyn Fn(f64, f64) -> f64,
     /// Function to invert the scale function
     pub inverse_scale_func: &'a dyn Fn(f64, f64) -> f64,
-    /// Keeps track of the maximum value observed
-    pub min: f64,
     /// Keeps track of the minimum value observed
+    pub min: f64,
+    /// Keeps track of the maximum value observed
     pub max: f64,
 }
 
@@ -37,7 +37,7 @@ impl<'a> Digest for TDigest<'a> {
         );
     }
 
-    fn est_quantile_at_value(&self, item: f64) -> f64 {
+    fn est_quantile_at_value(&mut self, item: f64) -> f64 {
         if item <= self.min {
             return 0.0;
         } else if item >= self.max {
@@ -91,7 +91,7 @@ impl<'a> Digest for TDigest<'a> {
         );
     }
 
-    fn est_value_at_quantile(&self, quantile: f64) -> f64 {
+    fn est_value_at_quantile(&mut self, quantile: f64) -> f64 {
         let total_count = self.total_weight();
         let mut current_quantile = 0.0;
         for i in 0..self.centroids.len() {
@@ -435,17 +435,23 @@ impl<'a> TDigest<'a> {
     /// # Arguments
     /// * `centroids` The centroids to extract max and min from
     fn update_limits(&mut self, centroids: &[Centroid]) {
-        self.min = centroids
-            .iter()
-            .map(|x| x.mean)
-            .min_by(|a, b| a.partial_cmp(b).unwrap())
-            .unwrap_or_else(|| self.min);
+        self.min = f64::min(
+            centroids
+                .iter()
+                .map(|x| x.mean)
+                .min_by(|a, b| a.partial_cmp(b).unwrap())
+                .unwrap_or_else(|| f64::INFINITY),
+            self.min,
+        );
 
-        self.max = centroids
-            .iter()
-            .map(|x| x.mean)
-            .max_by(|a, b| a.partial_cmp(b).unwrap())
-            .unwrap_or_else(|| self.max);
+        self.max = f64::max(
+            centroids
+                .iter()
+                .map(|x| x.mean)
+                .max_by(|a, b| a.partial_cmp(b).unwrap())
+                .unwrap_or_else(|| f64::NEG_INFINITY),
+            self.max,
+        );
     }
 }
 
@@ -656,52 +662,5 @@ mod test {
         assert_relative_eq!(digest.est_quantile_at_value(0.0), 0.5, epsilon = 0.001);
         assert_relative_eq!(digest.est_quantile_at_value(250.0), 0.75, epsilon = 0.001);
         assert_relative_eq!(digest.est_quantile_at_value(500.0), 1.0);
-    }
-}
-
-#[cfg(test)]
-mod scale_functions_test {
-    use crate::t_digest::scale_functions::{inv_k0, inv_k1, inv_k2, inv_k3, k0, k1, k2, k3};
-    use approx::assert_relative_eq;
-
-    #[test]
-    fn k0_properties() {
-        assert_relative_eq!(k0(0.0, 10.0), 0.0);
-    }
-
-    #[test]
-    fn inv_k0_properties() {
-        for i in 0..100 {
-            assert_relative_eq!(inv_k0(k0(i as f64, 10.0), 10.0), i as f64);
-        }
-    }
-
-    #[test]
-    fn k1_properties() {
-        assert_relative_eq!(k1(1.0, 10.0), 10.0 / 4.0);
-    }
-
-    #[test]
-    fn inv_k1_properties() {
-        for i in 0..100 {
-            let q = i as f64 / 100.0;
-            assert_relative_eq!(inv_k1(k1(q, 10.0), 10.0), q);
-        }
-    }
-
-    #[test]
-    fn inv_k2_properties() {
-        for i in 0..100 {
-            let q = i as f64 / 100.0;
-            assert_relative_eq!(inv_k2(k2(q, 10.0), 10.0), q);
-        }
-    }
-
-    #[test]
-    fn inv_k3_properties() {
-        for i in 1..99 {
-            let q = i as f64 / 100.0;
-            assert_relative_eq!(inv_k3(k3(q, 10.0), 10.0), q, epsilon = 0.01);
-        }
     }
 }

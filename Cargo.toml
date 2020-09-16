@@ -10,6 +10,7 @@ edition = "2018"
 approx = "0.3.2"
 rand = "0.7.3"
 criterion = "0.3.3"
+rayon = "1.4.0"
 
 [profile.bench]
 debug = true
@@ -23,4 +24,8 @@ harness = false
 
 [[bench]]
 name = "t_digest"
+harness = false
+
+[[bench]]
+name = "par_t_digest"
 harness = false
