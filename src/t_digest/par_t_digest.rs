@@ -16,6 +16,12 @@ where
     creator: C,
 }
 
+/// Digest with internal buffer and parallel merging of that buffer.
+/// Adds input items to an internal buffer.
+/// When full the buffer is split into chunks, each of which are fed into
+/// a new digest.
+/// The result of each of these digests is fed into the main digest.
+/// Buffer is flushed if an estimation is made.
 impl<C, F, G> ParTDigest<C, F, G>
 where
     F: Fn(f64, f64) -> f64 + Sync,
