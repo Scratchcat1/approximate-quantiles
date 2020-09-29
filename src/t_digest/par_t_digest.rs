@@ -33,11 +33,9 @@ where
     }
 
     pub fn flush(&mut self) {
-        let elements: Vec<f64> = self.buffer.drain(0..self.buffer.len()).collect();
-        let centroids: Vec<Centroid> = elements
-            .chunks(self.threads)
-            .collect::<Vec<&[f64]>>()
-            .par_iter()
+        let centroids: Vec<Centroid> = self
+            .buffer
+            .par_chunks(self.threads)
             .map(|chunk| {
                 let mut tmp_digest = (self.creator)();
                 tmp_digest.add_buffer(chunk.to_vec());
@@ -46,6 +44,7 @@ where
             .flatten()
             .collect();
         self.digest.add_centroid_buffer(centroids);
+        self.buffer.clear();
     }
 
     pub fn total_weight(&self) -> f64 {
@@ -67,6 +66,7 @@ where
     }
     fn add_buffer(&mut self, items: Vec<f64>) {
         self.buffer.extend(items);
+        // self.buffer = items;
         if self.buffer.len() > self.capacity {
             self.flush();
         }
@@ -106,7 +106,7 @@ mod test {
     #[test]
     fn add_buffer_with_many_centroids() {
         let buffer = (0..1001).map(|x| x as f64).collect();
-        let mut digest = ParTDigest::new(32, 128, &|| TDigest::new(&k1, &inv_k1, 50.0));
+        let mut digest = ParTDigest::new(250, 1000, &|| TDigest::new(&k1, &inv_k1, 50.0));
         digest.add_buffer(buffer);
 
         println!("{:?}", digest.digest.centroids);

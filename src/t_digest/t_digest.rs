@@ -176,8 +176,6 @@ where
     ///
     /// * `buffer` The buffer to merge into the digest
     pub fn add_centroid_buffer(&mut self, mut buffer: Vec<Centroid>) {
-        self.update_limits(&buffer);
-
         // Merge the digest centroids into the buffer since normally |buffer| > |self.centroids|
         buffer.extend(self.centroids.clone());
         // Nothing to merge, exit
@@ -186,6 +184,8 @@ where
         }
         buffer.sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
         let num_elements: f64 = buffer.iter().map(|c| c.weight).sum();
+        self.min = f64::min(self.min, buffer.first().unwrap().mean);
+        self.max = f64::max(self.max, buffer.last().unwrap().mean);
 
         // Use weights instead of quantiles to minimise division in the main loop
         let mut w0 = 0.0;
