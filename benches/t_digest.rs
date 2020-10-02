@@ -221,19 +221,20 @@ fn reference_benchmarks(c: &mut Criterion) {
 
     c.bench_function("vector_centroid_add_100000", |b| {
         b.iter(|| {
-            let buffer: Vec<Centroid> = (0..black_box(10))
+            let mut buffer: Vec<Centroid> = (0..black_box(100000))
                 .map(|x| Centroid {
                     mean: x as f64,
                     weight: 1.0,
                 })
                 .collect();
+            buffer.sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
             let mut vec = Vec::new();
             let mut x = 0 as f64;
             for c in buffer {
                 x += c.mean * c.weight;
                 vec.push(x);
             }
-            black_box(vec);
+            black_box(x);
         });
     });
 
@@ -247,11 +248,12 @@ fn reference_benchmarks(c: &mut Criterion) {
                 .collect();
             buffer.sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
             let num_elements: f64 = buffer.iter().map(|c| c.weight).sum();
+            black_box(num_elements);
             let min = buffer.first().unwrap();
             let max = buffer.last().unwrap();
             black_box(min);
             black_box(max);
-            let mut vec = Vec::new();
+            let mut vec: Vec<Centroid> = Vec::new();
             let mut sum = 0.0;
             let mut weight = 0.0;
             for c in buffer {
@@ -270,7 +272,6 @@ fn reference_benchmarks(c: &mut Criterion) {
             black_box(vec);
             black_box(sum);
             black_box(weight);
-            black_box(num_elements);
         });
     });
 

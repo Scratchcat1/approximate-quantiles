@@ -70,10 +70,6 @@ where
                 } else {
                     // item is between the previous and current centroid
                     let prev_centroid = &self.centroids[i - 1];
-                    println!(
-                        "{:?} {:?} {:?} {:?}",
-                        current_quantile, prev_centroid, &self.centroids[i], total_count
-                    );
                     return self.interpolate_centroids_quantile(
                         prev_centroid,
                         &self.centroids[i],
@@ -469,7 +465,9 @@ mod test {
     use crate::t_digest::scale_functions::{inv_k0, inv_k1, k0, k1};
     use crate::t_digest::t_digest::TDigest;
     use crate::traits::Digest;
+    use crate::util::linear_digest::LinearDigest;
     use approx::assert_relative_eq;
+    use rand::distributions::{Distribution, Uniform};
 
     #[test]
     fn add_buffer_with_single_centroid() {
@@ -560,6 +558,107 @@ mod test {
         assert_relative_eq!(digest.est_value_at_quantile(0.75), 750.0, epsilon = 1.0);
         assert_relative_eq!(digest.est_value_at_quantile(1.0), 1000.0);
         assert_eq!(digest.total_weight(), 1001.0);
+    }
+
+    #[test]
+    fn add_buffer_uniform_est_value_at_quantile() {
+        let mut rng = rand::thread_rng();
+        let uniform = Uniform::from(0.0..1001.0);
+        let buffer: Vec<f64> = (0..1_000_000)
+            .map(|_| uniform.sample(&mut rng) as f64)
+            .collect();
+        let mut digest = TDigest::new(&k1, &inv_k1, 2000.0);
+        let mut linear_digest = LinearDigest::new();
+        digest.add_buffer(buffer.clone());
+        linear_digest.add_buffer(buffer.clone());
+
+        println!("{}", digest.centroids.len());
+        assert_relative_eq!(
+            digest.est_value_at_quantile(0.0) / linear_digest.est_value_at_quantile(0.0),
+            1.0,
+            epsilon = 0.0005
+        );
+        assert_relative_eq!(
+            digest.est_value_at_quantile(0.001) / linear_digest.est_value_at_quantile(0.001),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_value_at_quantile(0.01) / linear_digest.est_value_at_quantile(0.01),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_value_at_quantile(0.25) / linear_digest.est_value_at_quantile(0.25),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_value_at_quantile(0.5) / linear_digest.est_value_at_quantile(0.5),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_value_at_quantile(0.75) / linear_digest.est_value_at_quantile(0.75),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_value_at_quantile(1.0) / linear_digest.est_value_at_quantile(1.0),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_eq!(digest.total_weight(), linear_digest.values.len() as f64);
+    }
+
+    #[test]
+    fn add_buffer_uniform_est_quantile_at_value() {
+        let mut rng = rand::thread_rng();
+        let uniform = Uniform::from(0.0..1001.0);
+        let buffer: Vec<f64> = (0..1_000_000)
+            .map(|_| uniform.sample(&mut rng) as f64)
+            .collect();
+        let mut digest = TDigest::new(&k1, &inv_k1, 2000.0);
+        let mut linear_digest = LinearDigest::new();
+        digest.add_buffer(buffer.clone());
+        linear_digest.add_buffer(buffer.clone());
+
+        println!("{}", digest.centroids.len());
+        assert_relative_eq!(
+            digest.est_quantile_at_value(0.0),
+            linear_digest.est_quantile_at_value(0.0)
+        );
+        assert_relative_eq!(
+            digest.est_quantile_at_value(1.0) / linear_digest.est_quantile_at_value(1.0),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_quantile_at_value(10.0) / linear_digest.est_quantile_at_value(10.0),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_quantile_at_value(250.0) / linear_digest.est_quantile_at_value(250.0),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_quantile_at_value(500.0) / linear_digest.est_quantile_at_value(500.0),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_quantile_at_value(750.0) / linear_digest.est_quantile_at_value(750.0),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_quantile_at_value(1000.0) / linear_digest.est_quantile_at_value(1000.0),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_eq!(digest.total_weight(), linear_digest.values.len() as f64);
     }
 
     #[test]
