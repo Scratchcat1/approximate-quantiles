@@ -71,9 +71,9 @@ mod test {
         digest.add_buffer(dataset);
 
         assert_relative_eq!(digest.est_value_at_quantile(0.0), 0.0, epsilon = 2.0);
-        assert_relative_eq!(digest.est_value_at_quantile(0.25), 250.0, epsilon = 2.0);
-        assert_relative_eq!(digest.est_value_at_quantile(0.5), 500.0, epsilon = 2.0);
-        assert_relative_eq!(digest.est_value_at_quantile(0.75), 750.0, epsilon = 2.0);
+        assert_relative_eq!(digest.est_value_at_quantile(0.25), 250.0, epsilon = 3.0);
+        assert_relative_eq!(digest.est_value_at_quantile(0.5), 500.0, epsilon = 3.0);
+        assert_relative_eq!(digest.est_value_at_quantile(0.75), 750.0, epsilon = 3.0);
         assert_relative_eq!(digest.est_value_at_quantile(1.0), 1000.0, epsilon = 2.0);
     }
 }

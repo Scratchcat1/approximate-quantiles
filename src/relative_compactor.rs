@@ -142,7 +142,9 @@ impl RCSketch {
 mod test {
     use crate::relative_compactor::RCSketch;
     use crate::traits::Digest;
+    use crate::util::linear_digest::LinearDigest;
     use approx::assert_relative_eq;
+    use rand::distributions::{Distribution, Uniform};
 
     #[test]
     fn insert_single_value() {
@@ -242,6 +244,103 @@ mod test {
             epsilon = 30.0
         );
         // assert_eq!(false, true);
+    }
+
+    #[test]
+    fn add_buffer_uniform_est_value_at_quantile() {
+        let mut rng = rand::thread_rng();
+        let uniform = Uniform::from(0.0..1001.0);
+        let buffer: Vec<f64> = (0..1_000_000)
+            .map(|_| uniform.sample(&mut rng) as f64)
+            .collect();
+        let mut digest = RCSketch::new(4096);
+        let mut linear_digest = LinearDigest::new();
+        digest.add_buffer(buffer.clone());
+        linear_digest.add_buffer(buffer.clone());
+
+        // assert_relative_eq!(
+        //     digest.est_value_at_quantile(0.0) / linear_digest.est_value_at_quantile(0.0),
+        //     1.0,
+        //     epsilon = 0.01
+        // );
+        assert_relative_eq!(
+            digest.est_value_at_quantile(0.001) / linear_digest.est_value_at_quantile(0.001),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_value_at_quantile(0.01) / linear_digest.est_value_at_quantile(0.01),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_value_at_quantile(0.25) / linear_digest.est_value_at_quantile(0.25),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_value_at_quantile(0.5) / linear_digest.est_value_at_quantile(0.5),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_value_at_quantile(0.75) / linear_digest.est_value_at_quantile(0.75),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_value_at_quantile(1.0) / linear_digest.est_value_at_quantile(1.0),
+            1.0,
+            epsilon = 0.005
+        );
+    }
+
+    #[test]
+    fn add_buffer_uniform_est_quantile_at_value() {
+        let mut rng = rand::thread_rng();
+        let uniform = Uniform::from(0.0..1001.0);
+        let buffer: Vec<f64> = (0..1_000_000)
+            .map(|_| uniform.sample(&mut rng) as f64)
+            .collect();
+        let mut digest = RCSketch::new(4096);
+        let mut linear_digest = LinearDigest::new();
+        digest.add_buffer(buffer.clone());
+        linear_digest.add_buffer(buffer.clone());
+
+        assert_relative_eq!(
+            digest.est_quantile_at_value(0.0),
+            linear_digest.est_quantile_at_value(0.0)
+        );
+        assert_relative_eq!(
+            digest.est_quantile_at_value(1.0) / linear_digest.est_quantile_at_value(1.0),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_quantile_at_value(10.0) / linear_digest.est_quantile_at_value(10.0),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_quantile_at_value(250.0) / linear_digest.est_quantile_at_value(250.0),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_quantile_at_value(500.0) / linear_digest.est_quantile_at_value(500.0),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_quantile_at_value(750.0) / linear_digest.est_quantile_at_value(750.0),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_quantile_at_value(1000.0) / linear_digest.est_quantile_at_value(1000.0),
+            1.0,
+            epsilon = 0.005
+        );
     }
 
     #[test]

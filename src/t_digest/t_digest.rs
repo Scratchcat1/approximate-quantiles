@@ -581,7 +581,7 @@ mod test {
         assert_relative_eq!(
             digest.est_value_at_quantile(0.001) / linear_digest.est_value_at_quantile(0.001),
             1.0,
-            epsilon = 0.005
+            epsilon = 0.0075
         );
         assert_relative_eq!(
             digest.est_value_at_quantile(0.01) / linear_digest.est_value_at_quantile(0.01),
