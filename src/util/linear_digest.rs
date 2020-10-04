@@ -42,6 +42,19 @@ mod test {
     use rand::distributions::{Distribution, Uniform};
 
     #[test]
+    fn est_quantile_at_value() {
+        let dataset: Vec<f64> = (0..1000).map(|x| x as f64).collect();
+        let mut digest = LinearDigest::new();
+        digest.add_buffer(dataset);
+
+        assert_relative_eq!(digest.est_quantile_at_value(0.0), 0.0);
+        assert_relative_eq!(digest.est_quantile_at_value(250.0), 0.25);
+        assert_relative_eq!(digest.est_quantile_at_value(500.0), 0.5);
+        assert_relative_eq!(digest.est_quantile_at_value(750.0), 0.75);
+        assert_relative_eq!(digest.est_quantile_at_value(1000.0), 1.0);
+    }
+
+    #[test]
     fn uniform_est_quantile_at_value() {
         let mut rng = rand::thread_rng();
         let uniform = Uniform::from(0..1000);
@@ -56,7 +69,20 @@ mod test {
         assert_relative_eq!(digest.est_quantile_at_value(250.0), 0.25, epsilon = 0.01);
         assert_relative_eq!(digest.est_quantile_at_value(500.0), 0.5, epsilon = 0.01);
         assert_relative_eq!(digest.est_quantile_at_value(750.0), 0.75, epsilon = 0.01);
-        assert_relative_eq!(digest.est_quantile_at_value(1000.0), 1.0, epsilon = 0.01);
+        assert_relative_eq!(digest.est_quantile_at_value(999.0), 1.0, epsilon = 0.01);
+    }
+
+    #[test]
+    fn est_value_at_quantile() {
+        let dataset: Vec<f64> = (0..1000).map(|x| x as f64).collect();
+        let mut digest = LinearDigest::new();
+        digest.add_buffer(dataset);
+
+        assert_relative_eq!(digest.est_value_at_quantile(0.0), 0.0);
+        assert_relative_eq!(digest.est_value_at_quantile(0.25), 250.0);
+        assert_relative_eq!(digest.est_value_at_quantile(0.5), 500.0);
+        assert_relative_eq!(digest.est_value_at_quantile(0.75), 750.0);
+        assert_relative_eq!(digest.est_value_at_quantile(1.0), 999.0);
     }
 
     #[test]
@@ -72,7 +98,7 @@ mod test {
 
         assert_relative_eq!(digest.est_value_at_quantile(0.0), 0.0, epsilon = 2.0);
         assert_relative_eq!(digest.est_value_at_quantile(0.25), 250.0, epsilon = 3.0);
-        assert_relative_eq!(digest.est_value_at_quantile(0.5), 500.0, epsilon = 3.0);
+        assert_relative_eq!(digest.est_value_at_quantile(0.5), 500.0, epsilon = 4.0);
         assert_relative_eq!(digest.est_value_at_quantile(0.75), 750.0, epsilon = 3.0);
         assert_relative_eq!(digest.est_value_at_quantile(1.0), 1000.0, epsilon = 2.0);
     }

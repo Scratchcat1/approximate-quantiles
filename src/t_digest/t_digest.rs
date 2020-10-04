@@ -1,11 +1,12 @@
 #![allow(dead_code)]
 use crate::t_digest::centroid::Centroid;
 use crate::traits::Digest;
+use crate::util::weighted_average;
 
 pub struct TDigest<F, G>
 where
-    F: Fn(f64, f64) -> f64,
-    G: Fn(f64, f64) -> f64,
+    F: Fn(f64, f64, f64) -> f64,
+    G: Fn(f64, f64, f64) -> f64,
 {
     /// Vector of centroids
     pub centroids: Vec<Centroid>,
@@ -23,8 +24,8 @@ where
 
 impl<F, G> Digest for TDigest<F, G>
 where
-    F: Fn(f64, f64) -> f64,
-    G: Fn(f64, f64) -> f64,
+    F: Fn(f64, f64, f64) -> f64,
+    G: Fn(f64, f64, f64) -> f64,
 {
     fn add(&mut self, item: f64) {
         self.add_centroid_buffer(vec![Centroid {
@@ -95,59 +96,62 @@ where
         );
     }
 
-    fn est_value_at_quantile(&mut self, quantile: f64) -> f64 {
-        let total_count = self.total_weight();
-        let mut current_quantile = 0.0;
-        for i in 0..self.centroids.len() {
-            // Quantile is located before this center of this centroid
-            let new_quantile = current_quantile + (self.centroids[i].weight / (2.0 * total_count));
-            if new_quantile > quantile {
-                if i == 0 {
-                    // Quantile is between the minimum value and the midpoint of the first centroid
-                    let prev_centroid = Centroid {
-                        mean: self.min,
-                        weight: 1.0,
-                    };
-                    return self.interpolate_centroids_value(
-                        &prev_centroid,
-                        &self.centroids[i],
-                        quantile,
-                        prev_centroid.weight / (2.0 * total_count),
-                        total_count,
-                    );
-                } else {
-                    // Quantile is bewteen the previous and current centroid
-                    let prev_centroid = &self.centroids[i - 1];
-                    return self.interpolate_centroids_value(
-                        prev_centroid,
-                        &self.centroids[i],
-                        quantile,
-                        current_quantile,
-                        total_count,
-                    );
-                }
-            }
-            current_quantile += self.centroids[i].weight / total_count;
+    fn est_value_at_quantile(&mut self, target_quantile: f64) -> f64 {
+        let total_weight = self.total_weight();
+        let target_index = total_weight * target_quantile;
+
+        if target_index < 1.0 {
+            return self.min;
         }
-        // Quantile is between the midpoint of the last centroid and the maximum value
-        let curr_centroid = Centroid {
-            mean: self.max,
-            weight: 1.0,
-        };
-        return self.interpolate_centroids_value(
-            &self.centroids[self.centroids.len() - 1],
-            &curr_centroid,
-            quantile,
-            current_quantile,
-            total_count,
-        );
+
+        let first = &self.centroids[0];
+        if first.weight > 1.0 && target_index < first.weight / 2.0 {
+            return self.min
+                + (target_index - 1.0) / (first.weight / 2.0 - 1.0) * (first.mean - self.min);
+        }
+
+        if target_index > total_weight - 1.0 {
+            return self.max;
+        }
+
+        let last = self.centroids.last().unwrap();
+        if last.weight > 1.0 && total_weight - target_index <= last.weight / 2.0 {
+            return self.max - (total_weight - target_index - 1.0) / (last.weight / 2.0 - 1.0);
+        }
+
+        let mut curr_weight = first.weight / 2.0;
+        for i in 0..(total_weight as usize) {
+            let curr = &self.centroids[i];
+            let next = &self.centroids[i + 1];
+            let dw = (curr.weight + next.weight) / 2.0;
+
+            if curr_weight + dw > target_index {
+                if curr.weight == 1.0 && target_index - curr_weight < 0.5 {
+                    return curr.mean;
+                }
+
+                if next.weight == 1.0 && curr_weight + dw - target_index <= 0.5 {
+                    return next.mean;
+                }
+
+                let z1 = target_index - curr_weight - 0.5;
+                let z2 = curr_weight + dw - target_index - 0.5;
+                return weighted_average(curr.mean, z2, next.mean, z1);
+            }
+
+            curr_weight += dw;
+        }
+
+        let z1 = target_index - total_weight - last.weight / 2.0;
+        let z2 = last.weight / 2.0 - z1;
+        return weighted_average(last.mean, z1, self.max, z2);
     }
 }
 
 impl<F, G> TDigest<F, G>
 where
-    F: Fn(f64, f64) -> f64,
-    G: Fn(f64, f64) -> f64,
+    F: Fn(f64, f64, f64) -> f64,
+    G: Fn(f64, f64, f64) -> f64,
 {
     /// Returns a new `TDigest`
     /// # Arguments
@@ -187,8 +191,9 @@ where
         let mut w0 = 0.0;
         let get_w_limit = |w0| {
             (self.inverse_scale_func)(
-                (self.scale_func)(w0 / num_elements, self.compress_factor) + 1.0,
+                (self.scale_func)(w0 / num_elements, self.compress_factor, num_elements) + 1.0,
                 self.compress_factor,
+                num_elements,
             ) * num_elements
         };
         let mut w_size_limit = get_w_limit(w0);
@@ -387,8 +392,8 @@ where
         // Calculate the left and right quartiles
         let q_left = self.weight_left(target_centroid) / new_total_weight;
         let q_right = q_left + target_centroid.weight / new_total_weight;
-        (self.scale_func)(q_right, self.compress_factor)
-            - (self.scale_func)(q_left, self.compress_factor)
+        (self.scale_func)(q_right, self.compress_factor, new_total_weight)
+            - (self.scale_func)(q_left, self.compress_factor, new_total_weight)
     }
 
     /// Estimate the quantile of a particular value between two centroids
@@ -411,28 +416,6 @@ where
         let proportion =
             (target_value - prev_centroid.mean) / (current_centroid.mean - prev_centroid.mean);
         return proportion * (next_quantile - prev_quantile) + prev_quantile;
-    }
-
-    /// Estimate the value at a particular quantile between two centroids
-    /// # Arguments
-    /// * `prev_centroid` Previous centroid
-    /// * `current_centroid` Current centroid
-    /// * `quantile` the quantile to estimate the value of
-    /// * `current_quantile` the quantile on the left of the current centroid
-    /// * `total_count` the total weight in the digest
-    fn interpolate_centroids_value(
-        &self,
-        prev_centroid: &Centroid,
-        current_centroid: &Centroid,
-        quantile: f64,
-        current_quantile: f64,
-        total_count: f64,
-    ) -> f64 {
-        let prev_quantile = current_quantile - (prev_centroid.weight / (2.0 * total_count));
-        let quantile_proportion = (quantile - prev_quantile)
-            / (current_quantile + (current_centroid.weight / (2.0 * total_count)) - prev_quantile);
-        return quantile_proportion * (current_centroid.mean - prev_centroid.mean)
-            + prev_centroid.mean;
     }
 
     /// Update the max and min values from a slice of new centroids
@@ -462,7 +445,7 @@ where
 #[cfg(test)]
 mod test {
     use crate::t_digest::centroid::Centroid;
-    use crate::t_digest::scale_functions::{inv_k0, inv_k1, k0, k1};
+    use crate::t_digest::scale_functions::{inv_k0, inv_k1, inv_k2, k0, k1, k2};
     use crate::t_digest::t_digest::TDigest;
     use crate::traits::Digest;
     use crate::util::linear_digest::LinearDigest;
@@ -485,34 +468,6 @@ mod test {
     }
 
     #[test]
-    fn add_buffer_with_multiple_centroid() {
-        let buffer = vec![
-            Centroid {
-                mean: 1.0,
-                weight: 1.0,
-            },
-            Centroid {
-                mean: 2.0,
-                weight: 1.0,
-            },
-            Centroid {
-                mean: 0.5,
-                weight: 1.0,
-            },
-        ];
-        let mut digest = TDigest::new(&k0, &inv_k0, 50.0);
-        digest.add_centroid_buffer(buffer);
-
-        println!("{:?}", digest.centroids);
-        assert_relative_eq!(digest.est_value_at_quantile(0.0), 0.5);
-        assert_relative_eq!(digest.est_value_at_quantile(0.25), 0.625);
-        assert_relative_eq!(digest.est_value_at_quantile(0.5), 1.0);
-        assert_relative_eq!(digest.est_value_at_quantile(0.75), 1.75);
-        assert_relative_eq!(digest.est_value_at_quantile(1.0), 2.0);
-        assert_eq!(digest.total_weight(), 3.0);
-    }
-
-    #[test]
     fn add_buffer_with_many_centroids() {
         let buffer = (0..1001)
             .map(|x| Centroid {
@@ -526,11 +481,7 @@ mod test {
         println!("{:?}", digest.centroids);
         assert_relative_eq!(digest.est_value_at_quantile(0.0), 0.0);
         assert_relative_eq!(digest.est_value_at_quantile(0.25), 250.0, epsilon = 1.0);
-        assert_relative_eq!(
-            digest.est_value_at_quantile(0.5),
-            500.0,
-            epsilon = 0.0000001
-        );
+        assert_relative_eq!(digest.est_value_at_quantile(0.5), 500.0, epsilon = 2.0);
         assert_relative_eq!(digest.est_value_at_quantile(0.75), 750.0, epsilon = 1.0);
         assert_relative_eq!(digest.est_value_at_quantile(1.0), 1000.0);
         assert_eq!(digest.total_weight(), 1001.0);
@@ -550,11 +501,7 @@ mod test {
         println!("{:?}", digest.centroids);
         assert_relative_eq!(digest.est_value_at_quantile(0.0), 0.0);
         assert_relative_eq!(digest.est_value_at_quantile(0.25), 250.0, epsilon = 1.0);
-        assert_relative_eq!(
-            digest.est_value_at_quantile(0.5),
-            500.0,
-            epsilon = 0.0000001
-        );
+        assert_relative_eq!(digest.est_value_at_quantile(0.5), 500.0, epsilon = 2.0);
         assert_relative_eq!(digest.est_value_at_quantile(0.75), 750.0, epsilon = 1.0);
         assert_relative_eq!(digest.est_value_at_quantile(1.0), 1000.0);
         assert_eq!(digest.total_weight(), 1001.0);
@@ -567,7 +514,7 @@ mod test {
         let buffer: Vec<f64> = (0..1_000_000)
             .map(|_| uniform.sample(&mut rng) as f64)
             .collect();
-        let mut digest = TDigest::new(&k1, &inv_k1, 2000.0);
+        let mut digest = TDigest::new(&k2, &inv_k2, 2000.0);
         let mut linear_digest = LinearDigest::new();
         digest.add_buffer(buffer.clone());
         linear_digest.add_buffer(buffer.clone());
@@ -631,7 +578,7 @@ mod test {
         assert_relative_eq!(
             digest.est_quantile_at_value(1.0) / linear_digest.est_quantile_at_value(1.0),
             1.0,
-            epsilon = 0.005
+            epsilon = 0.0075
         );
         assert_relative_eq!(
             digest.est_quantile_at_value(10.0) / linear_digest.est_quantile_at_value(10.0),
@@ -677,34 +624,6 @@ mod test {
     }
 
     #[test]
-    fn add_cluster_with_multiple_centroid() {
-        let cluster = vec![
-            Centroid {
-                mean: 1.0,
-                weight: 1.0,
-            },
-            Centroid {
-                mean: 2.0,
-                weight: 1.0,
-            },
-            Centroid {
-                mean: 0.5,
-                weight: 1.0,
-            },
-        ];
-        let mut digest = TDigest::new(&k0, &inv_k0, 50.0);
-        digest.add_cluster(cluster, 3.0);
-
-        println!("{:?}", digest.centroids);
-        assert_relative_eq!(digest.est_value_at_quantile(0.0), 0.5);
-        assert_relative_eq!(digest.est_value_at_quantile(0.25), 0.625);
-        assert_relative_eq!(digest.est_value_at_quantile(0.5), 1.0);
-        assert_relative_eq!(digest.est_value_at_quantile(0.75), 1.75);
-        assert_relative_eq!(digest.est_value_at_quantile(1.0), 2.0);
-        assert_eq!(digest.total_weight(), 3.0);
-    }
-
-    #[test]
     fn add_cluster_with_many_centroids() {
         let cluster = (0..1001)
             .map(|x| Centroid {
@@ -718,11 +637,7 @@ mod test {
         println!("{:?}", digest.centroids);
         assert_relative_eq!(digest.est_value_at_quantile(0.0), 0.0);
         assert_relative_eq!(digest.est_value_at_quantile(0.25), 250.0, epsilon = 1.0);
-        assert_relative_eq!(
-            digest.est_value_at_quantile(0.5),
-            500.0,
-            epsilon = 0.0000001
-        );
+        assert_relative_eq!(digest.est_value_at_quantile(0.5), 500.0, epsilon = 2.0);
         assert_relative_eq!(digest.est_value_at_quantile(0.75), 750.0, epsilon = 1.0);
         assert_relative_eq!(digest.est_value_at_quantile(1.0), 1000.0);
         assert_eq!(digest.total_weight(), 1001.0);
@@ -742,11 +657,7 @@ mod test {
         println!("{:?}", digest.centroids);
         assert_relative_eq!(digest.est_value_at_quantile(0.0), 0.0);
         assert_relative_eq!(digest.est_value_at_quantile(0.25), 250.0, epsilon = 1.0);
-        assert_relative_eq!(
-            digest.est_value_at_quantile(0.5),
-            500.0,
-            epsilon = 0.0000001
-        );
+        assert_relative_eq!(digest.est_value_at_quantile(0.5), 500.0, epsilon = 2.0);
         assert_relative_eq!(digest.est_value_at_quantile(0.75), 750.0, epsilon = 1.0);
         assert_relative_eq!(digest.est_value_at_quantile(1.0), 1000.0);
         assert_eq!(digest.total_weight(), 1001.0);
@@ -769,5 +680,22 @@ mod test {
         assert_relative_eq!(digest.est_quantile_at_value(0.0), 0.5, epsilon = 0.001);
         assert_relative_eq!(digest.est_quantile_at_value(250.0), 0.75, epsilon = 0.001);
         assert_relative_eq!(digest.est_quantile_at_value(500.0), 1.0);
+    }
+
+    #[test]
+    fn est_value_at_quantile_singleton_centroids() {
+        let mut digest = TDigest::new(&k0, &inv_k0, 50.0);
+        digest.add_buffer(vec![1.0, 2.0, 8.0, 0.5]);
+
+        assert_relative_eq!(digest.est_value_at_quantile(0.0), 0.5);
+        assert_relative_eq!(digest.est_value_at_quantile(0.24), 0.5);
+        assert_relative_eq!(digest.est_value_at_quantile(0.25), 1.0);
+        assert_relative_eq!(digest.est_value_at_quantile(0.49), 1.0);
+        assert_relative_eq!(digest.est_value_at_quantile(0.50), 2.0);
+        assert_relative_eq!(digest.est_value_at_quantile(0.74), 2.0);
+        assert_relative_eq!(digest.est_value_at_quantile(0.75), 8.0);
+        assert_relative_eq!(digest.est_value_at_quantile(1.0), 8.0);
+        assert_eq!(digest.centroids.len(), 4);
+        assert_eq!(digest.total_weight(), 4.0);
     }
 }
