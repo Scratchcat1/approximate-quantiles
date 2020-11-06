@@ -3,8 +3,8 @@ use approximate_quantiles::t_digest::{
     scale_functions::{inv_k1, k1},
     t_digest::TDigest,
 };
+use approximate_quantiles::util::{gen_asc_centroid_vec, gen_uniform_vec};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use rand::distributions::{Distribution, Uniform};
 
 fn t_digest_add_buffer_in_order(c: &mut Criterion) {
     c.bench_function("t_digest_add_buffer_in_order_single", |b| {
@@ -18,12 +18,7 @@ fn t_digest_add_buffer_in_order(c: &mut Criterion) {
     });
     c.bench_function("t_digest_add_buffer_in_order_100", |b| {
         b.iter(|| {
-            let buffer = (0..100)
-                .map(|x| Centroid {
-                    mean: x as f64,
-                    weight: 1.0,
-                })
-                .collect();
+            let buffer = gen_asc_centroid_vec(100);
             let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
             digest.add_centroid_buffer(buffer);
         })
@@ -31,12 +26,7 @@ fn t_digest_add_buffer_in_order(c: &mut Criterion) {
 
     c.bench_function("t_digest_add_buffer_in_order_10000", |b| {
         b.iter(|| {
-            let buffer = (0..10000)
-                .map(|x| Centroid {
-                    mean: x as f64,
-                    weight: 1.0,
-                })
-                .collect();
+            let buffer = gen_asc_centroid_vec(10_000);
             let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
             digest.add_centroid_buffer(buffer);
         })
@@ -44,12 +34,7 @@ fn t_digest_add_buffer_in_order(c: &mut Criterion) {
 
     c.bench_function("t_digest_add_buffer_in_order_100000", |b| {
         b.iter(|| {
-            let buffer = (0..100000)
-                .map(|x| Centroid {
-                    mean: x as f64,
-                    weight: 1.0,
-                })
-                .collect();
+            let buffer = gen_asc_centroid_vec(100_000);
             let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
             digest.add_centroid_buffer(buffer);
         })
@@ -72,12 +57,7 @@ fn t_digest_add_cluster_in_order(c: &mut Criterion) {
     });
     c.bench_function("t_digest_add_cluster_in_order_100", |b| {
         b.iter(|| {
-            let buffer = (0..100)
-                .map(|x| Centroid {
-                    mean: x as f64,
-                    weight: 1.0,
-                })
-                .collect();
+            let buffer = gen_asc_centroid_vec(100);
             let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
             digest.add_cluster(buffer, 5.0);
         })
@@ -85,12 +65,7 @@ fn t_digest_add_cluster_in_order(c: &mut Criterion) {
 
     c.bench_function("t_digest_add_cluster_in_order_10000", |b| {
         b.iter(|| {
-            let buffer = (0..10000)
-                .map(|x| Centroid {
-                    mean: x as f64,
-                    weight: 1.0,
-                })
-                .collect();
+            let buffer = gen_asc_centroid_vec(10_000);
             let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
             digest.add_cluster(buffer, 5.0);
         })
@@ -98,12 +73,7 @@ fn t_digest_add_cluster_in_order(c: &mut Criterion) {
 
     c.bench_function("t_digest_add_cluster_in_order_100000", |b| {
         b.iter(|| {
-            let buffer = (0..100000)
-                .map(|x| Centroid {
-                    mean: x as f64,
-                    weight: 1.0,
-                })
-                .collect();
+            let buffer = gen_asc_centroid_vec(100_000);
             let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
             digest.add_cluster(buffer, 5.0);
         })
@@ -113,11 +83,7 @@ fn t_digest_add_cluster_in_order(c: &mut Criterion) {
 fn t_digest_add_cluster_uniform(c: &mut Criterion) {
     c.bench_function("t_digest_add_cluster_uniform_single", |b| {
         let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
-        let mut rng = rand::thread_rng();
-        let uniform = Uniform::from(0.0..1001.0);
-        let buffer: Vec<f64> = (0..10_000_000)
-            .map(|_| uniform.sample(&mut rng) as f64)
-            .collect();
+        let buffer: Vec<f64> = gen_uniform_vec(10_000_000);
         let mut buff_iter = buffer.into_iter();
         // let mut iterator = 0..;
         b.iter(|| {
@@ -141,12 +107,7 @@ fn t_digest_util(c: &mut Criterion) {
     });
 
     c.bench_function("t_digest_util_total_weight", |b| {
-        let buffer = (0..black_box(100000))
-            .map(|x| Centroid {
-                mean: x as f64,
-                weight: 1.0,
-            })
-            .collect();
+        let buffer = gen_asc_centroid_vec(100_000);
         let mut digest = TDigest::new(&k1, &inv_k1, 20.0);
         digest.add_centroid_buffer(buffer);
         b.iter(|| {
@@ -155,12 +116,7 @@ fn t_digest_util(c: &mut Criterion) {
     });
 
     c.bench_function("t_digest_util_k_size", |b| {
-        let buffer = (0..black_box(100000))
-            .map(|x| Centroid {
-                mean: x as f64,
-                weight: 1.0,
-            })
-            .collect();
+        let buffer = gen_asc_centroid_vec(100_000);
         let mut digest = TDigest::new(&k1, &inv_k1, 20.0);
         digest.add_centroid_buffer(buffer);
         let mut iterator = 0..;
@@ -173,12 +129,7 @@ fn t_digest_util(c: &mut Criterion) {
     });
 
     c.bench_function("t_digest_util_find_closest_centroids", |b| {
-        let buffer = (0..black_box(100000))
-            .map(|x| Centroid {
-                mean: x as f64,
-                weight: 1.0,
-            })
-            .collect();
+        let buffer = gen_asc_centroid_vec(100_000);
         let mut digest = TDigest::new(&k1, &inv_k1, 20.0);
         digest.add_centroid_buffer(buffer);
         let mut iterator = 0..;

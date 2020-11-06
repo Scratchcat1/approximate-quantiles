@@ -1,5 +1,6 @@
 use approximate_quantiles::relative_compactor::RCSketch;
 use approximate_quantiles::traits::Digest;
+use approximate_quantiles::util::gen_asc_vec;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 fn relative_compactor_in_order(c: &mut Criterion) {
@@ -39,21 +40,21 @@ fn relative_compactor_in_order(c: &mut Criterion) {
     c.bench_function("relative_compactor_batch_in_order_100", |b| {
         b.iter(|| {
             let mut sketch = RCSketch::new(black_box(64));
-            sketch.add_buffer((0..100).map(|x| x as f64).collect());
+            sketch.add_buffer(gen_asc_vec(100));
         })
     });
 
     c.bench_function("relative_compactor_batch_in_order_10000", |b| {
         b.iter(|| {
             let mut sketch = RCSketch::new(black_box(64));
-            sketch.add_buffer((0..10000).map(|x| x as f64).collect());
+            sketch.add_buffer(gen_asc_vec(10_000));
         })
     });
 
     c.bench_function("relative_compactor_batch_in_order_100000", |b| {
         b.iter(|| {
             let mut sketch = RCSketch::new(black_box(64));
-            sketch.add_buffer((0..100000).map(|x| x as f64).collect());
+            sketch.add_buffer(gen_asc_vec(100_000));
         })
     });
 }
