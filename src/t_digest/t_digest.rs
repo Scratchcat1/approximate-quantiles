@@ -241,18 +241,6 @@ where
             let close_centroids = self.find_closest_centroids(&x);
             match close_centroids {
                 Some(indexes) => {
-                    // let acceptable_centroids_ok: Vec<bool> = indexes
-                    //     .clone()
-                    //     .map(|i| self.k_size(&(&x + &self.centroids[i])).abs() < 1.0)
-                    //     .collect();
-
-                    // let acceptable_centroids: Vec<&mut Centroid> = self.centroids[indexes]
-                    //     .iter_mut()
-                    //     .zip(acceptable_centroids_ok)
-                    //     .filter(|(_c, ok)| *ok)
-                    //     .map(|(c, _ok)| c)
-                    //     .collect();
-
                     // Find the index of a centroid with space to merge the current centroid
                     // selecting the one with the minimum weight
                     let mut min_acceptable_index = None;
@@ -309,7 +297,7 @@ where
                 self.add_buffer(Vec::new());
             }
         }
-        self.add_buffer(Vec::new());
+        // Don't perform a final merge, this significantly improves performance while digest size is still bounded by the growth limit.
     }
 
     /// Find the range of indexes in the digest which cover the centroids which all have the minimum distance
