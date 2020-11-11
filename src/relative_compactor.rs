@@ -20,7 +20,7 @@ impl Digest for RCSketch {
         self.count += 1;
     }
 
-    fn add_buffer(&mut self, items: Vec<f64>) {
+    fn add_buffer(&mut self, items: &[f64]) {
         let length = items.len() as u64;
         // Insert into the bottom buffer
         self.insert_at_rc_batch(items, 0);
@@ -83,7 +83,7 @@ impl RCSketch {
         // If buffer is full compact and insert into the next buffer
         if self.buffers[rc_index].len() >= self.buffer_size {
             let output_items = self.compact(rc_index);
-            self.insert_at_rc_batch(output_items, rc_index + 1);
+            self.insert_at_rc_batch(&output_items, rc_index + 1);
         }
     }
 
@@ -91,7 +91,7 @@ impl RCSketch {
     /// # Arguments
     /// * `items` The items to insert
     /// * `rc_index` the index of the buffer to insert at
-    pub fn insert_at_rc_batch(&mut self, items: Vec<f64>, rc_index: usize) {
+    pub fn insert_at_rc_batch(&mut self, items: &[f64], rc_index: usize) {
         // Create a new buffer if required
         if self.buffers.len() <= rc_index {
             self.buffers.push(Vec::with_capacity(self.buffer_size));
@@ -100,7 +100,7 @@ impl RCSketch {
         // If buffer is full compact and insert into the next buffer
         if self.buffers[rc_index].len() >= self.buffer_size {
             let output_items = self.compact(rc_index);
-            self.insert_at_rc_batch(output_items, rc_index + 1);
+            self.insert_at_rc_batch(&output_items, rc_index + 1);
         }
     }
 
@@ -142,6 +142,7 @@ impl RCSketch {
 mod test {
     use crate::relative_compactor::RCSketch;
     use crate::traits::Digest;
+    use crate::util::gen_asc_vec;
     use crate::util::linear_digest::LinearDigest;
     use approx::assert_relative_eq;
     use rand::distributions::{Distribution, Uniform};
@@ -200,14 +201,14 @@ mod test {
     #[test]
     fn insert_batch_single_value() {
         let mut sketch = RCSketch::new(64);
-        sketch.add_buffer(vec![1.0]);
+        sketch.add_buffer(&vec![1.0]);
         assert_eq!(sketch.interpolate_rank(1.0), 1);
     }
 
     #[test]
     fn insert_batch_multiple_values() {
         let mut sketch = RCSketch::new(256);
-        sketch.add_buffer((0..1000).map(|x| x as f64).collect());
+        sketch.add_buffer(&gen_asc_vec(1000));
 
         println!("{:?}", sketch);
         assert_eq!(sketch.interpolate_rank(0.0), 1);
@@ -228,7 +229,7 @@ mod test {
     #[test]
     fn insert_batch_descending_multiple_values() {
         let mut sketch = RCSketch::new(256);
-        sketch.add_buffer((0..1000).map(|x| 999.0 - x as f64).collect());
+        sketch.add_buffer(&(0..1000).map(|x| 999.0 - x as f64).collect::<Vec<f64>>());
 
         println!("{:?}", sketch);
         assert_eq!(sketch.interpolate_rank(0.0), 1);
@@ -255,8 +256,8 @@ mod test {
             .collect();
         let mut digest = RCSketch::new(4096);
         let mut linear_digest = LinearDigest::new();
-        digest.add_buffer(buffer.clone());
-        linear_digest.add_buffer(buffer.clone());
+        digest.add_buffer(&buffer);
+        linear_digest.add_buffer(&buffer);
 
         // assert_relative_eq!(
         //     digest.est_value_at_quantile(0.0) / linear_digest.est_value_at_quantile(0.0),
@@ -304,8 +305,8 @@ mod test {
             .collect();
         let mut digest = RCSketch::new(4096);
         let mut linear_digest = LinearDigest::new();
-        digest.add_buffer(buffer.clone());
-        linear_digest.add_buffer(buffer.clone());
+        digest.add_buffer(&buffer);
+        linear_digest.add_buffer(&buffer);
 
         assert_relative_eq!(
             digest.est_quantile_at_value(0.0),
@@ -346,7 +347,7 @@ mod test {
     #[test]
     fn est_value_at_quantile() {
         let mut sketch = RCSketch::new(256);
-        sketch.add_buffer((0..1000).map(|x| x as f64).collect());
+        sketch.add_buffer(&gen_asc_vec(1000));
 
         println!("{:?}", sketch);
         assert_relative_eq!(sketch.est_value_at_quantile(0.0), 0.0, epsilon = 0.001);

@@ -15,7 +15,7 @@ impl Digest for LinearDigest {
         self.values.push(item);
     }
 
-    fn add_buffer(&mut self, items: std::vec::Vec<f64>) {
+    fn add_buffer(&mut self, items: &[f64]) {
         self.values.extend(items);
     }
 
@@ -45,7 +45,7 @@ mod test {
     fn est_quantile_at_value() {
         let dataset: Vec<f64> = (0..1000).map(|x| x as f64).collect();
         let mut digest = LinearDigest::new();
-        digest.add_buffer(dataset);
+        digest.add_buffer(&dataset);
 
         assert_relative_eq!(digest.est_quantile_at_value(0.0), 0.0);
         assert_relative_eq!(digest.est_quantile_at_value(250.0), 0.25);
@@ -63,7 +63,7 @@ mod test {
             .collect();
 
         let mut digest = LinearDigest::new();
-        digest.add_buffer(dataset);
+        digest.add_buffer(&dataset);
 
         assert_relative_eq!(digest.est_quantile_at_value(0.0), 0.0);
         assert_relative_eq!(digest.est_quantile_at_value(250.0), 0.25, epsilon = 0.01);
@@ -76,7 +76,7 @@ mod test {
     fn est_value_at_quantile() {
         let dataset: Vec<f64> = (0..1000).map(|x| x as f64).collect();
         let mut digest = LinearDigest::new();
-        digest.add_buffer(dataset);
+        digest.add_buffer(&dataset);
 
         assert_relative_eq!(digest.est_value_at_quantile(0.0), 0.0);
         assert_relative_eq!(digest.est_value_at_quantile(0.25), 250.0);
@@ -94,7 +94,7 @@ mod test {
             .collect();
 
         let mut digest = LinearDigest::new();
-        digest.add_buffer(dataset);
+        digest.add_buffer(&dataset);
 
         assert_relative_eq!(digest.est_value_at_quantile(0.0), 0.0, epsilon = 2.0);
         assert_relative_eq!(digest.est_value_at_quantile(0.25), 250.0, epsilon = 3.0);

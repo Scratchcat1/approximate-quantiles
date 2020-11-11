@@ -29,3 +29,7 @@ harness = false
 [[bench]]
 name = "par_t_digest"
 harness = false
+
+[[bench]]
+name = "baseline"
+harness = false

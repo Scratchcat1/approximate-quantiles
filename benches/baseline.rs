@@ -1,4 +1,5 @@
 use approximate_quantiles::t_digest::centroid::Centroid;
+use approximate_quantiles::util::gen_uniform_centroid_vec;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 struct IntCentroid {
@@ -123,7 +124,7 @@ fn reference_benchmarks(c: &mut Criterion) {
         });
     });
 
-    c.bench_function("mergesort_centroids_100000", |b| {
+    c.bench_function("mergesort_in_order_centroids_100000", |b| {
         b.iter(|| {
             let mut buffer: Vec<Centroid> = (0..black_box(100000))
                 .map(|x| Centroid {
@@ -131,6 +132,13 @@ fn reference_benchmarks(c: &mut Criterion) {
                     weight: 1.0,
                 })
                 .collect();
+            buffer.sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
+        });
+    });
+
+    c.bench_function("mergesort_uniform_centroids_100000", |b| {
+        b.iter(|| {
+            let mut buffer: Vec<Centroid> = gen_uniform_centroid_vec(100_000);
             buffer.sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
         });
     });

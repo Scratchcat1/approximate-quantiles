@@ -34,12 +34,12 @@ where
         }]);
     }
 
-    fn add_buffer(&mut self, buffer: Vec<f64>) {
+    fn add_buffer(&mut self, buffer: &[f64]) {
         self.add_centroid_buffer(
             buffer
-                .into_iter()
+                .iter()
                 .map(|item| Centroid {
-                    mean: item,
+                    mean: *item,
                     weight: 1.0,
                 })
                 .collect::<Vec<Centroid>>(),
@@ -294,7 +294,7 @@ where
 
             // Prevent excess growth with particular insertion patterns by periodically merging
             if self.centroids.len() > (growth_limit * self.compress_factor) as usize {
-                self.add_buffer(Vec::new());
+                self.add_buffer(&Vec::new());
             }
         }
         // Don't perform a final merge, this significantly improves performance while digest size is still bounded by the growth limit.
@@ -504,8 +504,8 @@ mod test {
             .collect();
         let mut digest = TDigest::new(&k2, &inv_k2, 2000.0);
         let mut linear_digest = LinearDigest::new();
-        digest.add_buffer(buffer.clone());
-        linear_digest.add_buffer(buffer.clone());
+        digest.add_buffer(&buffer);
+        linear_digest.add_buffer(&buffer);
 
         println!("{}", digest.centroids.len());
         assert_relative_eq!(
@@ -555,8 +555,8 @@ mod test {
             .collect();
         let mut digest = TDigest::new(&k1, &inv_k1, 2000.0);
         let mut linear_digest = LinearDigest::new();
-        digest.add_buffer(buffer.clone());
-        linear_digest.add_buffer(buffer.clone());
+        digest.add_buffer(&buffer);
+        linear_digest.add_buffer(&buffer);
 
         println!("{}", digest.centroids.len());
         assert_relative_eq!(
@@ -673,7 +673,7 @@ mod test {
     #[test]
     fn est_value_at_quantile_singleton_centroids() {
         let mut digest = TDigest::new(&k0, &inv_k0, 50.0);
-        digest.add_buffer(vec![1.0, 2.0, 8.0, 0.5]);
+        digest.add_buffer(&vec![1.0, 2.0, 8.0, 0.5]);
 
         assert_relative_eq!(digest.est_value_at_quantile(0.0), 0.5);
         assert_relative_eq!(digest.est_value_at_quantile(0.24), 0.5);

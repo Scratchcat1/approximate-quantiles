@@ -45,7 +45,7 @@ where
                 .par_chunks(self.threads)
                 .map(|chunk| {
                     let mut tmp_digest = (self.creator)();
-                    tmp_digest.add_buffer(chunk.to_vec());
+                    tmp_digest.add_buffer(chunk);
                     tmp_digest
                 })
                 .collect();
@@ -87,7 +87,7 @@ where
             self.flush();
         }
     }
-    fn add_buffer(&mut self, items: Vec<f64>) {
+    fn add_buffer(&mut self, items: &[f64]) {
         self.buffer.extend(items);
         // self.buffer = items;
         if self.buffer.len() > self.capacity {
@@ -110,15 +110,16 @@ mod test {
     use crate::t_digest::scale_functions::{inv_k1, inv_k2, k1, k2};
     use crate::t_digest::t_digest::TDigest;
     use crate::traits::Digest;
+    use crate::util::gen_asc_vec;
     use crate::util::linear_digest::LinearDigest;
     use approx::assert_relative_eq;
     use rand::distributions::{Distribution, Uniform};
 
     #[test]
     fn add_buffer_with_many_centroids() {
-        let buffer = (0..1001).map(|x| x as f64).collect();
+        let buffer = gen_asc_vec(1001);
         let mut digest = ParTDigest::new(2500, 10000, &|| TDigest::new(&k1, &inv_k1, 50.0));
-        digest.add_buffer(buffer);
+        digest.add_buffer(&buffer);
 
         println!("{:?}", digest.digest.centroids);
         println!("{:?}", digest.digest.min);
@@ -140,8 +141,8 @@ mod test {
             .collect();
         let mut digest = ParTDigest::new(2500, 10000, &|| TDigest::new(&k1, &inv_k1, 4000.0));
         let mut linear_digest = LinearDigest::new();
-        digest.add_buffer(buffer.clone());
-        linear_digest.add_buffer(buffer.clone());
+        digest.add_buffer(&buffer);
+        linear_digest.add_buffer(&buffer);
 
         assert_relative_eq!(
             digest.est_value_at_quantile(0.0) / linear_digest.est_value_at_quantile(0.0),
@@ -190,8 +191,8 @@ mod test {
             .collect();
         let mut digest = ParTDigest::new(250, 1000, &|| TDigest::new(&k2, &inv_k2, 2000.0));
         let mut linear_digest = LinearDigest::new();
-        digest.add_buffer(buffer.clone());
-        linear_digest.add_buffer(buffer.clone());
+        digest.add_buffer(&buffer);
+        linear_digest.add_buffer(&buffer);
 
         assert_relative_eq!(
             digest.est_quantile_at_value(0.0),
@@ -232,9 +233,8 @@ mod test {
 
     #[test]
     fn add_buffer_with_many_centroids_high_compression() {
-        let buffer = (0..1001).map(|x| x as f64).collect();
         let mut digest = ParTDigest::new(32, 128, &|| TDigest::new(&k1, &inv_k1, 20.0));
-        digest.add_buffer(buffer);
+        digest.add_buffer(&gen_asc_vec(1001));
 
         assert_relative_eq!(digest.est_value_at_quantile(0.0), 0.0, epsilon = 3.0);
         assert_relative_eq!(digest.est_value_at_quantile(0.25), 250.0, epsilon = 1.0);
@@ -246,9 +246,9 @@ mod test {
 
     #[test]
     fn est_quantile_at_value() {
-        let buffer = (0..1001).map(|x| -500.0 + x as f64).collect();
+        let buffer: Vec<f64> = (0..1001).map(|x| -500.0 + x as f64).collect();
         let mut digest = ParTDigest::new(32, 128, &|| TDigest::new(&k1, &inv_k1, 20.0));
-        digest.add_buffer(buffer);
+        digest.add_buffer(&buffer);
 
         assert_relative_eq!(digest.est_quantile_at_value(-500.0), 0.0);
         assert_relative_eq!(digest.est_quantile_at_value(-250.0), 0.25, epsilon = 0.001);
@@ -260,7 +260,7 @@ mod test {
     #[test]
     fn est_value_at_quantile_singleton_centroids() {
         let mut digest = ParTDigest::new(32, 128, &|| TDigest::new(&k1, &inv_k1, 20.0));
-        digest.add_buffer(vec![1.0, 2.0, 8.0, 0.5]);
+        digest.add_buffer(&vec![1.0, 2.0, 8.0, 0.5]);
 
         assert_relative_eq!(digest.est_value_at_quantile(0.0), 0.5);
         assert_relative_eq!(digest.est_value_at_quantile(0.24), 0.5);

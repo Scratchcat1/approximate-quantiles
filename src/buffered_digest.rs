@@ -22,8 +22,8 @@ where
     }
 
     pub fn flush(&mut self) {
-        self.digest
-            .add_buffer(self.buffer.drain(0..self.buffer.len()).collect());
+        self.digest.add_buffer(&self.buffer);
+        self.buffer.clear();
     }
 }
 
@@ -38,7 +38,7 @@ where
         }
     }
 
-    fn add_buffer(&mut self, items: Vec<f64>) {
+    fn add_buffer(&mut self, items: &[f64]) {
         self.buffer.extend(items);
         if self.buffer.len() > self.capacity {
             self.flush();

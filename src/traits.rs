@@ -11,7 +11,7 @@ pub trait Digest {
     /// # Arguments
     ///
     /// * `buffer` The buffer to merge into the digest
-    fn add_buffer(&mut self, buffer: Vec<f64>);
+    fn add_buffer(&mut self, buffer: &[f64]);
 
     /// Estimate the quantile of an item
     /// # Arguments
