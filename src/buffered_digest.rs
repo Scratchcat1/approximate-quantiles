@@ -39,10 +39,12 @@ where
     }
 
     fn add_buffer(&mut self, items: &[f64]) {
-        self.buffer.extend(items);
-        if self.buffer.len() > self.capacity {
-            self.flush();
-        }
+        items.chunks(self.capacity).for_each(|chunk| {
+            self.buffer.extend(chunk);
+            if self.buffer.len() > self.capacity {
+                self.flush();
+            }
+        })
     }
 
     fn est_quantile_at_value(&mut self, value: f64) -> f64 {

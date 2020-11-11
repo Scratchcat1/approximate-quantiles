@@ -3,14 +3,18 @@ use approximate_quantiles::t_digest::{
     scale_functions::{inv_k1, k1},
     t_digest::TDigest,
 };
-use approximate_quantiles::util::{
-    gen_asc_centroid_vec, gen_uniform_centroid_vec, gen_uniform_vec,
+use approximate_quantiles::util::{gen_asc_centroid_vec, gen_uniform_centroid_vec};
+use criterion::{
+    black_box, criterion_group, criterion_main, AxisScale, BenchmarkId, Criterion,
+    PlotConfiguration, Throughput,
 };
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::mem;
 
 fn t_digest_add_buffer_in_order_range(c: &mut Criterion) {
+    let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
+
     let mut group = c.benchmark_group("t_digest_add_buffer_in_order_range");
+    group.plot_config(plot_config);
     for size in [1, 10, 100, 1_000, 10_000, 100_000, 1_000_000].iter() {
         group.throughput(Throughput::Bytes(
             *size as u64 * mem::size_of::<f64>() as u64,
@@ -27,7 +31,11 @@ fn t_digest_add_buffer_in_order_range(c: &mut Criterion) {
 }
 
 fn t_digest_add_buffer_uniform_range(c: &mut Criterion) {
+    let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
+
     let mut group = c.benchmark_group("t_digest_add_buffer_uniform_range");
+    group.plot_config(plot_config);
+
     for size in [1, 10, 100, 1_000, 10_000, 100_000, 1_000_000].iter() {
         group.throughput(Throughput::Bytes(
             *size as u64 * mem::size_of::<f64>() as u64,
@@ -44,7 +52,11 @@ fn t_digest_add_buffer_uniform_range(c: &mut Criterion) {
 }
 
 fn t_digest_add_cluster_in_order_range(c: &mut Criterion) {
+    let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
+
     let mut group = c.benchmark_group("t_digest_add_cluster_in_order_range");
+    group.plot_config(plot_config);
+
     for size in [1, 10, 100, 1_000, 10_000, 100_000, 1_000_000].iter() {
         group.throughput(Throughput::Bytes(
             *size as u64 * mem::size_of::<f64>() as u64,
@@ -61,7 +73,11 @@ fn t_digest_add_cluster_in_order_range(c: &mut Criterion) {
 }
 
 fn t_digest_add_cluster_uniform_range(c: &mut Criterion) {
+    let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
+
     let mut group = c.benchmark_group("t_digest_add_cluster_uniform_range");
+    group.plot_config(plot_config);
+
     for size in [1, 10, 100, 1_000, 10_000, 100_000, 1_000_000].iter() {
         group.throughput(Throughput::Bytes(
             *size as u64 * mem::size_of::<f64>() as u64,
@@ -77,97 +93,97 @@ fn t_digest_add_cluster_uniform_range(c: &mut Criterion) {
     group.finish();
 }
 
-fn t_digest_add_buffer_in_order(c: &mut Criterion) {
-    c.bench_function("t_digest_add_buffer_in_order_single", |b| {
-        let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
-        b.iter(|| {
-            digest.add_centroid_buffer(vec![Centroid {
-                mean: black_box(2.0),
-                weight: 1.0,
-            }]);
-        })
-    });
-    c.bench_function("t_digest_add_buffer_in_order_100", |b| {
-        b.iter(|| {
-            let buffer = gen_asc_centroid_vec(100);
-            let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
-            digest.add_centroid_buffer(buffer);
-        })
-    });
+// fn t_digest_add_buffer_in_order(c: &mut Criterion) {
+//     c.bench_function("t_digest_add_buffer_in_order_single", |b| {
+//         let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
+//         b.iter(|| {
+//             digest.add_centroid_buffer(vec![Centroid {
+//                 mean: black_box(2.0),
+//                 weight: 1.0,
+//             }]);
+//         })
+//     });
+//     c.bench_function("t_digest_add_buffer_in_order_100", |b| {
+//         b.iter(|| {
+//             let buffer = gen_asc_centroid_vec(100);
+//             let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
+//             digest.add_centroid_buffer(buffer);
+//         })
+//     });
 
-    c.bench_function("t_digest_add_buffer_in_order_10000", |b| {
-        b.iter(|| {
-            let buffer = gen_asc_centroid_vec(10_000);
-            let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
-            digest.add_centroid_buffer(buffer);
-        })
-    });
+//     c.bench_function("t_digest_add_buffer_in_order_10000", |b| {
+//         b.iter(|| {
+//             let buffer = gen_asc_centroid_vec(10_000);
+//             let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
+//             digest.add_centroid_buffer(buffer);
+//         })
+//     });
 
-    c.bench_function("t_digest_add_buffer_in_order_100000", |b| {
-        b.iter(|| {
-            let buffer = gen_asc_centroid_vec(100_000);
-            let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
-            digest.add_centroid_buffer(buffer);
-        })
-    });
-}
+//     c.bench_function("t_digest_add_buffer_in_order_100000", |b| {
+//         b.iter(|| {
+//             let buffer = gen_asc_centroid_vec(100_000);
+//             let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
+//             digest.add_centroid_buffer(buffer);
+//         })
+//     });
+// }
 
-fn t_digest_add_cluster_in_order(c: &mut Criterion) {
-    c.bench_function("t_digest_add_cluster_in_order_single", |b| {
-        let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
-        let mut iterator = 0..;
-        b.iter(|| {
-            digest.add_cluster(
-                vec![Centroid {
-                    mean: black_box(iterator.next().unwrap() as f64),
-                    weight: 1.0,
-                }],
-                5.0,
-            );
-        })
-    });
-    c.bench_function("t_digest_add_cluster_in_order_100", |b| {
-        b.iter(|| {
-            let buffer = gen_asc_centroid_vec(100);
-            let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
-            digest.add_cluster(buffer, 5.0);
-        })
-    });
+// fn t_digest_add_cluster_in_order(c: &mut Criterion) {
+//     c.bench_function("t_digest_add_cluster_in_order_single", |b| {
+//         let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
+//         let mut iterator = 0..;
+//         b.iter(|| {
+//             digest.add_cluster(
+//                 vec![Centroid {
+//                     mean: black_box(iterator.next().unwrap() as f64),
+//                     weight: 1.0,
+//                 }],
+//                 5.0,
+//             );
+//         })
+//     });
+//     c.bench_function("t_digest_add_cluster_in_order_100", |b| {
+//         b.iter(|| {
+//             let buffer = gen_asc_centroid_vec(100);
+//             let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
+//             digest.add_cluster(buffer, 5.0);
+//         })
+//     });
 
-    c.bench_function("t_digest_add_cluster_in_order_10000", |b| {
-        b.iter(|| {
-            let buffer = gen_asc_centroid_vec(10_000);
-            let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
-            digest.add_cluster(buffer, 5.0);
-        })
-    });
+//     c.bench_function("t_digest_add_cluster_in_order_10000", |b| {
+//         b.iter(|| {
+//             let buffer = gen_asc_centroid_vec(10_000);
+//             let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
+//             digest.add_cluster(buffer, 5.0);
+//         })
+//     });
 
-    c.bench_function("t_digest_add_cluster_in_order_100000", |b| {
-        b.iter(|| {
-            let buffer = gen_asc_centroid_vec(100_000);
-            let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
-            digest.add_cluster(buffer, 5.0);
-        })
-    });
-}
+//     c.bench_function("t_digest_add_cluster_in_order_100000", |b| {
+//         b.iter(|| {
+//             let buffer = gen_asc_centroid_vec(100_000);
+//             let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
+//             digest.add_cluster(buffer, 5.0);
+//         })
+//     });
+// }
 
-fn t_digest_add_cluster_uniform(c: &mut Criterion) {
-    c.bench_function("t_digest_add_cluster_uniform_single", |b| {
-        let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
-        let buffer: Vec<f64> = gen_uniform_vec(10_000_000);
-        let mut buff_iter = buffer.into_iter();
-        // let mut iterator = 0..;
-        b.iter(|| {
-            digest.add_cluster(
-                vec![Centroid {
-                    mean: buff_iter.next().unwrap(),
-                    weight: 1.0,
-                }],
-                5.0,
-            );
-        });
-    });
-}
+// fn t_digest_add_cluster_uniform(c: &mut Criterion) {
+//     c.bench_function("t_digest_add_cluster_uniform_single", |b| {
+//         let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
+//         let buffer: Vec<f64> = gen_uniform_vec(10_000_000);
+//         let mut buff_iter = buffer.into_iter();
+//         // let mut iterator = 0..;
+//         b.iter(|| {
+//             digest.add_cluster(
+//                 vec![Centroid {
+//                     mean: buff_iter.next().unwrap(),
+//                     weight: 1.0,
+//                 }],
+//                 5.0,
+//             );
+//         });
+//     });
+// }
 
 fn t_digest_util(c: &mut Criterion) {
     c.bench_function("t_digest_util_total_weight_empty", |b| {
@@ -215,9 +231,9 @@ fn t_digest_util(c: &mut Criterion) {
 
 criterion_group!(
     benches,
-    t_digest_add_buffer_in_order,
-    t_digest_add_cluster_in_order,
-    t_digest_add_cluster_uniform,
+    // t_digest_add_buffer_in_order,
+    // t_digest_add_cluster_in_order,
+    // t_digest_add_cluster_uniform,
     t_digest_add_buffer_in_order_range,
     t_digest_add_buffer_uniform_range,
     t_digest_add_cluster_in_order_range,

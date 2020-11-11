@@ -1,11 +1,16 @@
 use approximate_quantiles::relative_compactor::RCSketch;
 use approximate_quantiles::traits::Digest;
 use approximate_quantiles::util::{gen_asc_vec, gen_uniform_vec};
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{
+    black_box, criterion_group, criterion_main, AxisScale, BenchmarkId, Criterion,
+    PlotConfiguration, Throughput,
+};
 use std::mem;
 
 fn relative_compactor_in_order_range(c: &mut Criterion) {
+    let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
     let mut group = c.benchmark_group("relative_compactor_in_order_range");
+    group.plot_config(plot_config);
     for size in [1, 10, 100, 1_000, 10_000, 100_000, 1_000_000].iter() {
         group.throughput(Throughput::Bytes(
             *size as u64 * mem::size_of::<f64>() as u64,
@@ -22,7 +27,9 @@ fn relative_compactor_in_order_range(c: &mut Criterion) {
 }
 
 fn relative_compactor_uniform_range(c: &mut Criterion) {
+    let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
     let mut group = c.benchmark_group("relative_compactor_uniform_range");
+    group.plot_config(plot_config);
     for size in [1, 10, 100, 1_000, 10_000, 100_000, 1_000_000].iter() {
         group.throughput(Throughput::Bytes(
             *size as u64 * mem::size_of::<f64>() as u64,
@@ -39,7 +46,9 @@ fn relative_compactor_uniform_range(c: &mut Criterion) {
 }
 
 fn relative_compactor_batch_in_order_range(c: &mut Criterion) {
+    let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
     let mut group = c.benchmark_group("relative_compactor_batch_in_order_range");
+    group.plot_config(plot_config);
     for size in [1, 10, 100, 1_000, 10_000, 100_000, 1_000_000].iter() {
         group.throughput(Throughput::Bytes(
             *size as u64 * mem::size_of::<f64>() as u64,
@@ -56,7 +65,9 @@ fn relative_compactor_batch_in_order_range(c: &mut Criterion) {
 }
 
 fn relative_compactor_batch_uniform_range(c: &mut Criterion) {
+    let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
     let mut group = c.benchmark_group("relative_compactor_batch_uniform_range");
+    group.plot_config(plot_config);
     for size in [1, 10, 100, 1_000, 10_000, 100_000, 1_000_000].iter() {
         group.throughput(Throughput::Bytes(
             *size as u64 * mem::size_of::<f64>() as u64,

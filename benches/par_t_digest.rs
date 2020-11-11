@@ -5,7 +5,10 @@ use approximate_quantiles::t_digest::{
 };
 use approximate_quantiles::traits::Digest;
 use approximate_quantiles::util::{gen_asc_vec, gen_uniform_vec};
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{
+    criterion_group, criterion_main, AxisScale, BenchmarkId, Criterion, PlotConfiguration,
+    Throughput,
+};
 use std::mem;
 
 // fn par_t_digest_add_buffer_in_order(c: &mut Criterion) {
@@ -46,7 +49,10 @@ use std::mem;
 // }
 
 fn par_t_digest_add_buffer_in_order_range(c: &mut Criterion) {
+    let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
+
     let mut group = c.benchmark_group("par_t_digest_add_buffer_in_order_range");
+    group.plot_config(plot_config);
     for size in [1, 10, 100, 1_000, 10_000, 100_000, 1_000_000].iter() {
         group.throughput(Throughput::Bytes(
             *size as u64 * mem::size_of::<f64>() as u64,
@@ -64,7 +70,10 @@ fn par_t_digest_add_buffer_in_order_range(c: &mut Criterion) {
 }
 
 fn par_t_digest_add_buffer_uniform_range(c: &mut Criterion) {
+    let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
+
     let mut group = c.benchmark_group("par_t_digest_add_buffer_uniform_range");
+    group.plot_config(plot_config);
     for size in [1, 10, 100, 1_000, 10_000, 100_000, 1_000_000].iter() {
         group.throughput(Throughput::Bytes(
             *size as u64 * mem::size_of::<f64>() as u64,

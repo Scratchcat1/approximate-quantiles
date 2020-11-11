@@ -2,6 +2,7 @@
 use crate::t_digest::centroid::Centroid;
 use crate::traits::Digest;
 use crate::util::weighted_average;
+use rayon::prelude::*;
 
 pub struct TDigest<F, G>
 where
@@ -182,7 +183,7 @@ where
         if buffer.len() == 0 {
             return;
         }
-        buffer.sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
+        buffer.par_sort_unstable_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
         let num_elements: f64 = buffer.iter().map(|c| c.weight).sum();
         self.min = f64::min(self.min, buffer.first().unwrap().mean);
         self.max = f64::max(self.max, buffer.last().unwrap().mean);

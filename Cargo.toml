@@ -27,6 +27,10 @@ name = "t_digest"
 harness = false
 
 [[bench]]
+name = "buffered_t_digest"
+harness = false
+
+[[bench]]
 name = "par_t_digest"
 harness = false
 
