@@ -14,20 +14,25 @@ pub struct RCSketch {
     /// Number of items seen
     pub count: u64,
     /// Compaction counter
-    pub compaction_counter: u32,
+    pub compaction_counters: Vec<u32>,
 }
 
 impl Digest for RCSketch {
     fn add(&mut self, item: f64) {
         // Insert into the bottom buffer
-        self.insert_at_rc(item, 0);
+        self.insert_at_rc(item, 0, false);
         self.count += 1;
     }
 
     fn add_buffer(&mut self, items: &[f64]) {
         let length = items.len() as u64;
         // Insert into the bottom buffer
-        self.insert_at_rc_batch(items, 0);
+        // for item in items {
+        //     self.insert_at_rc(*item, 0, false);
+        // }
+        items
+            .chunks(self.buffer_size)
+            .for_each(|chunk| self.insert_at_rc_batch(chunk, 0, false));
         self.count += length;
     }
 
@@ -36,15 +41,26 @@ impl Digest for RCSketch {
     }
 
     fn est_value_at_quantile(&mut self, target_quantile: f64) -> f64 {
-        let mut start = *self.buffers[0]
+        let mut start = *self
+            .buffers
             .iter()
+            .map(|buffer| {
+                buffer
+                    .iter()
+                    .min_by(|a, b| a.partial_cmp(b).unwrap())
+                    .unwrap()
+            })
             .min_by(|a, b| a.partial_cmp(b).unwrap())
             .unwrap();
         let mut end = *self
             .buffers
-            .last()
-            .unwrap()
             .iter()
+            .map(|buffer| {
+                buffer
+                    .iter()
+                    .max_by(|a, b| a.partial_cmp(b).unwrap())
+                    .unwrap()
+            })
             .max_by(|a, b| a.partial_cmp(b).unwrap())
             .unwrap();
         let mut mid = (start + end) / 2.0;
@@ -74,7 +90,7 @@ impl RCSketch {
             k,
             buffer_size: Self::calc_buffer_size(input_length, k),
             count: 0,
-            compaction_counter: 0,
+            compaction_counters: Vec::new(),
         }
     }
 
@@ -85,48 +101,81 @@ impl RCSketch {
         );
     }
 
+    /// Determine the compaction index using an exponential distribution
+    /// Should only be called once per compaction as the compaction counter is updated.
+    /// # Arguments
+    /// * `rc_index` Index of the buffer to determine the compaction index of
+    pub fn get_compact_index(&mut self, rc_index: usize) -> usize {
+        // Determine the index to remove after
+        let compact_index = self.buffers[rc_index].len()
+            - (self.compaction_counters[rc_index].trailing_ones() as usize + 1) * self.k;
+        self.compaction_counters[rc_index] += 1;
+        return compact_index;
+    }
+
+    /// Determine the compaction index for a buffer.
+    /// Index is always half the target buffer size
+    /// # Arguments
+    /// * `rc_index` Index of the buffer to determine the compaction index of
+    #[inline]
+    pub fn get_compact_index_fast(&self) -> usize {
+        return self.buffer_size / 2;
+    }
+
     /// Insert an item into a particular buffer in the sketch
     /// # Arguments
     /// * `item` The item to insert
-    /// * `rc_index` the index of the buffer to insert at
-    pub fn insert_at_rc(&mut self, item: f64, rc_index: usize) {
+    /// * `rc_index` The index of the buffer to insert at
+    /// * `fast_compaction` Enables faster compaction in exchange for potentially increased error
+    pub fn insert_at_rc(&mut self, item: f64, rc_index: usize, fast_compaction: bool) {
         // Create a new buffer if required
         if self.buffers.len() <= rc_index {
             self.buffers.push(Vec::with_capacity(self.buffer_size));
+            self.compaction_counters.push(0);
         }
         self.buffers[rc_index].push(item);
         // If buffer is full compact and insert into the next buffer
         if self.buffers[rc_index].len() >= self.buffer_size {
-            let output_items = self.compact(rc_index);
-            self.insert_at_rc_batch(&output_items, rc_index + 1);
+            let compaction_index = if fast_compaction {
+                self.get_compact_index_fast()
+            } else {
+                self.get_compact_index(rc_index)
+            };
+            let output_items = self.compact(rc_index, compaction_index);
+            self.insert_at_rc_batch(&output_items, rc_index + 1, fast_compaction);
         }
     }
 
     /// Insert multiple items into a particular buffer in the sketch
     /// # Arguments
     /// * `items` The items to insert
-    /// * `rc_index` the index of the buffer to insert at
-    pub fn insert_at_rc_batch(&mut self, items: &[f64], rc_index: usize) {
+    /// * `rc_index` The index of the buffer to insert at
+    /// * `fast_compaction` Enables faster compaction in exchange for potentially increased error
+    pub fn insert_at_rc_batch(&mut self, items: &[f64], rc_index: usize, fast_compaction: bool) {
         // Create a new buffer if required
         if self.buffers.len() <= rc_index {
             self.buffers.push(Vec::with_capacity(self.buffer_size));
+            self.compaction_counters.push(0);
         }
         self.buffers[rc_index].extend(items);
         // If buffer is full compact and insert into the next buffer
+        // Buffer may be overfilled since more than one item was added so keep compacting until size is below the buffer size.
         while self.buffers[rc_index].len() >= self.buffer_size {
-            let output_items = self.compact(rc_index);
-            self.insert_at_rc_batch(&output_items, rc_index + 1);
+            let compaction_index = if fast_compaction {
+                self.get_compact_index_fast()
+            } else {
+                self.get_compact_index(rc_index)
+            };
+            let output_items = self.compact(rc_index, compaction_index);
+            self.insert_at_rc_batch(&output_items, rc_index + 1, fast_compaction);
         }
     }
 
     /// Compact a particular buffer and return the output
     /// # Arguments
     /// * `rc_index` Index of the buffer to compact
-    pub fn compact(&mut self, rc_index: usize) -> Vec<f64> {
-        // Determine the index to remove after
-        let compact_index = self.buffers[rc_index].len()
-            - (self.compaction_counter.trailing_ones() as usize + 1) * self.k;
-        self.compaction_counter += 1;
+    /// * `compact_index` Index after which to compact
+    pub fn compact(&mut self, rc_index: usize, compact_index: usize) -> Vec<f64> {
         // Sort and extract the largest values
         self.buffers[rc_index].sort_by(|a, b| a.partial_cmp(&b).unwrap());
         let upper = self.buffers[rc_index].split_off(compact_index);
@@ -267,11 +316,12 @@ mod test {
         let buffer: Vec<f64> = (0..1_000_000)
             .map(|_| uniform.sample(&mut rng) as f64)
             .collect();
-        let mut digest = RCSketch::new(1_000_000, 10);
+        let mut digest = RCSketch::new(1_000_000, 200);
         let mut linear_digest = LinearDigest::new();
         digest.add_buffer(&buffer);
         linear_digest.add_buffer(&buffer);
 
+        println!("{:?}", digest);
         // assert_relative_eq!(
         //     digest.est_value_at_quantile(0.0) / linear_digest.est_value_at_quantile(0.0),
         //     1.0,
@@ -316,11 +366,12 @@ mod test {
         let buffer: Vec<f64> = (0..1_000_000)
             .map(|_| uniform.sample(&mut rng) as f64)
             .collect();
-        let mut digest = RCSketch::new(1_000_000, 10);
+        let mut digest = RCSketch::new(1_000_000, 200);
         let mut linear_digest = LinearDigest::new();
         digest.add_buffer(&buffer);
         linear_digest.add_buffer(&buffer);
 
+        println!("{:?}", digest);
         assert_relative_eq!(
             digest.est_quantile_at_value(0.0),
             linear_digest.est_quantile_at_value(0.0)
@@ -359,7 +410,7 @@ mod test {
 
     #[test]
     fn est_value_at_quantile() {
-        let mut sketch = RCSketch::new(1024, 8);
+        let mut sketch = RCSketch::new(1024, 16);
         sketch.add_buffer(&gen_asc_vec(1000));
 
         println!("{:?}", sketch);
