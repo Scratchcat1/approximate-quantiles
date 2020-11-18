@@ -122,6 +122,15 @@ impl RCSketch {
         return self.buffer_size / 2;
     }
 
+    pub fn add_buffer_fast(&mut self, items: &[f64]) {
+        let length = items.len() as u64;
+        // Insert into the bottom buffer
+        items
+            .chunks(self.buffer_size)
+            .for_each(|chunk| self.insert_at_rc_batch(chunk, 0, true));
+        self.count += length;
+    }
+
     /// Insert an item into a particular buffer in the sketch
     /// # Arguments
     /// * `item` The item to insert
@@ -369,6 +378,105 @@ mod test {
         let mut digest = RCSketch::new(1_000_000, 200);
         let mut linear_digest = LinearDigest::new();
         digest.add_buffer(&buffer);
+        linear_digest.add_buffer(&buffer);
+
+        println!("{:?}", digest);
+        assert_relative_eq!(
+            digest.est_quantile_at_value(0.0),
+            linear_digest.est_quantile_at_value(0.0)
+        );
+        assert_relative_eq!(
+            digest.est_quantile_at_value(1.0) / linear_digest.est_quantile_at_value(1.0),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_quantile_at_value(10.0) / linear_digest.est_quantile_at_value(10.0),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_quantile_at_value(250.0) / linear_digest.est_quantile_at_value(250.0),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_quantile_at_value(500.0) / linear_digest.est_quantile_at_value(500.0),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_quantile_at_value(750.0) / linear_digest.est_quantile_at_value(750.0),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_quantile_at_value(1000.0) / linear_digest.est_quantile_at_value(1000.0),
+            1.0,
+            epsilon = 0.005
+        );
+    }
+
+    #[test]
+    fn add_buffer_fast_uniform_est_value_at_quantile() {
+        let mut rng = rand::thread_rng();
+        let uniform = Uniform::from(0.0..1001.0);
+        let buffer: Vec<f64> = (0..1_000_000)
+            .map(|_| uniform.sample(&mut rng) as f64)
+            .collect();
+        let mut digest = RCSketch::new(1_000_000, 315);
+        let mut linear_digest = LinearDigest::new();
+        digest.add_buffer_fast(&buffer);
+        linear_digest.add_buffer(&buffer);
+
+        println!("{:?}", digest);
+        // assert_relative_eq!(
+        //     digest.est_value_at_quantile(0.0) / linear_digest.est_value_at_quantile(0.0),
+        //     1.0,
+        //     epsilon = 0.01
+        // );
+        assert_relative_eq!(
+            digest.est_value_at_quantile(0.001) / linear_digest.est_value_at_quantile(0.001),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_value_at_quantile(0.01) / linear_digest.est_value_at_quantile(0.01),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_value_at_quantile(0.25) / linear_digest.est_value_at_quantile(0.25),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_value_at_quantile(0.5) / linear_digest.est_value_at_quantile(0.5),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_value_at_quantile(0.75) / linear_digest.est_value_at_quantile(0.75),
+            1.0,
+            epsilon = 0.005
+        );
+        assert_relative_eq!(
+            digest.est_value_at_quantile(1.0) / linear_digest.est_value_at_quantile(1.0),
+            1.0,
+            epsilon = 0.005
+        );
+    }
+
+    #[test]
+    fn add_buffer_fast_uniform_est_quantile_at_value() {
+        let mut rng = rand::thread_rng();
+        let uniform = Uniform::from(0.0..1001.0);
+        let buffer: Vec<f64> = (0..1_000_000)
+            .map(|_| uniform.sample(&mut rng) as f64)
+            .collect();
+        let mut digest = RCSketch::new(1_000_000, 315);
+        let mut linear_digest = LinearDigest::new();
+        digest.add_buffer_fast(&buffer);
         linear_digest.add_buffer(&buffer);
 
         println!("{:?}", digest);

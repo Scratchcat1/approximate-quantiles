@@ -45,9 +45,9 @@ fn relative_compactor_uniform_range(c: &mut Criterion) {
     group.finish();
 }
 
-fn relative_compactor_batch_in_order_range(c: &mut Criterion) {
+fn relative_compactor_fast_in_order_range(c: &mut Criterion) {
     let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
-    let mut group = c.benchmark_group("relative_compactor_batch_in_order_range");
+    let mut group = c.benchmark_group("relative_compactor_fast_in_order_range");
     group.plot_config(plot_config);
     for size in [1, 10, 100, 1_000, 10_000, 100_000, 1_000_000].iter() {
         group.throughput(Throughput::Bytes(
@@ -57,16 +57,16 @@ fn relative_compactor_batch_in_order_range(c: &mut Criterion) {
             let test_input = gen_asc_vec(size);
             b.iter(|| {
                 let mut digest = RCSketch::new(size as usize, 16);
-                digest.add_buffer(&test_input);
+                digest.add_buffer_fast(&test_input);
             });
         });
     }
     group.finish();
 }
 
-fn relative_compactor_batch_uniform_range(c: &mut Criterion) {
+fn relative_compactor_fast_uniform_range(c: &mut Criterion) {
     let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
-    let mut group = c.benchmark_group("relative_compactor_batch_uniform_range");
+    let mut group = c.benchmark_group("relative_compactor_fast_uniform_range");
     group.plot_config(plot_config);
     for size in [1, 10, 100, 1_000, 10_000, 100_000, 1_000_000].iter() {
         group.throughput(Throughput::Bytes(
@@ -76,7 +76,7 @@ fn relative_compactor_batch_uniform_range(c: &mut Criterion) {
             let test_input = gen_uniform_vec(size);
             b.iter(|| {
                 let mut digest = RCSketch::new(size as usize, 16);
-                digest.add_buffer(&test_input);
+                digest.add_buffer_fast(&test_input);
             });
         });
     }
@@ -151,7 +151,7 @@ criterion_group!(
     benches,
     relative_compactor_in_order_range,
     relative_compactor_uniform_range,
-    relative_compactor_batch_in_order_range,
-    relative_compactor_batch_uniform_range
+    relative_compactor_fast_in_order_range,
+    relative_compactor_fast_uniform_range
 );
 criterion_main!(benches);
