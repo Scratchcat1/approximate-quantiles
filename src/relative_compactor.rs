@@ -1,16 +1,20 @@
 use crate::traits::Digest;
-use rand::thread_rng;
-use rand::Rng;
 use std::cmp::Ordering;
 
 #[derive(Debug)]
 pub struct RCSketch {
     /// Vector of relative compactors
     pub buffers: Vec<Vec<f64>>,
-    /// Size of each of the buffers
+    /// Upper bound on the number of inputs expected
+    pub input_length: usize,
+    /// Parameter controlling error and buffer size
+    pub k: usize,
+    /// Size of the buffers
     pub buffer_size: usize,
     /// Number of items seen
     pub count: u64,
+    /// Compaction counter
+    pub compaction_counter: u32,
 }
 
 impl Digest for RCSketch {
@@ -61,13 +65,24 @@ impl Digest for RCSketch {
 impl RCSketch {
     /// Create a new `RCSketch`
     /// # Arguments
-    /// * `buffer_size` The size of each buffer
-    pub fn new(buffer_size: usize) -> RCSketch {
+    /// * `input_length` Upper bound on the number of inputs expected.
+    /// * `k` Parameter controlling error and buffer size
+    pub fn new(input_length: usize, k: usize) -> RCSketch {
         RCSketch {
             buffers: Vec::new(),
-            buffer_size,
+            input_length,
+            k,
+            buffer_size: Self::calc_buffer_size(input_length, k),
             count: 0,
+            compaction_counter: 0,
         }
+    }
+
+    pub fn calc_buffer_size(input_length: usize, k: usize) -> usize {
+        return usize::max(
+            (2.0 * k as f64 * ((input_length / k) as f64).log2()) as usize,
+            2 * k,
+        );
     }
 
     /// Insert an item into a particular buffer in the sketch
@@ -98,7 +113,7 @@ impl RCSketch {
         }
         self.buffers[rc_index].extend(items);
         // If buffer is full compact and insert into the next buffer
-        if self.buffers[rc_index].len() >= self.buffer_size {
+        while self.buffers[rc_index].len() >= self.buffer_size {
             let output_items = self.compact(rc_index);
             self.insert_at_rc_batch(&output_items, rc_index + 1);
         }
@@ -108,12 +123,10 @@ impl RCSketch {
     /// # Arguments
     /// * `rc_index` Index of the buffer to compact
     pub fn compact(&mut self, rc_index: usize) -> Vec<f64> {
-        // Randomly choose the index to remove after
-        let mut rng = thread_rng();
-        let compact_index = rng.gen_range(
-            self.buffers[rc_index].len() / 2,
-            self.buffers[rc_index].len(),
-        );
+        // Determine the index to remove after
+        let compact_index = self.buffers[rc_index].len()
+            - (self.compaction_counter.trailing_ones() as usize + 1) * self.k;
+        self.compaction_counter += 1;
         // Sort and extract the largest values
         self.buffers[rc_index].sort_by(|a, b| a.partial_cmp(&b).unwrap());
         let upper = self.buffers[rc_index].split_off(compact_index);
@@ -149,14 +162,14 @@ mod test {
 
     #[test]
     fn insert_single_value() {
-        let mut sketch = RCSketch::new(64);
+        let mut sketch = RCSketch::new(1024, 8);
         sketch.add(1.0);
         assert_eq!(sketch.interpolate_rank(1.0), 1);
     }
 
     #[test]
     fn insert_multiple_values() {
-        let mut sketch = RCSketch::new(256);
+        let mut sketch = RCSketch::new(1024, 8);
         (0..1000).map(|x| sketch.add(x as f64)).for_each(drop);
 
         println!("{:?}", sketch);
@@ -177,7 +190,7 @@ mod test {
 
     #[test]
     fn insert_descending_multiple_values() {
-        let mut sketch = RCSketch::new(256);
+        let mut sketch = RCSketch::new(1024, 8);
         (0..1000)
             .map(|x| sketch.add(999.0 - x as f64))
             .for_each(drop);
@@ -200,14 +213,14 @@ mod test {
 
     #[test]
     fn insert_batch_single_value() {
-        let mut sketch = RCSketch::new(64);
+        let mut sketch = RCSketch::new(1024, 8);
         sketch.add_buffer(&vec![1.0]);
         assert_eq!(sketch.interpolate_rank(1.0), 1);
     }
 
     #[test]
     fn insert_batch_multiple_values() {
-        let mut sketch = RCSketch::new(256);
+        let mut sketch = RCSketch::new(1024, 8);
         sketch.add_buffer(&gen_asc_vec(1000));
 
         println!("{:?}", sketch);
@@ -228,7 +241,7 @@ mod test {
 
     #[test]
     fn insert_batch_descending_multiple_values() {
-        let mut sketch = RCSketch::new(256);
+        let mut sketch = RCSketch::new(1024, 8);
         sketch.add_buffer(&(0..1000).map(|x| 999.0 - x as f64).collect::<Vec<f64>>());
 
         println!("{:?}", sketch);
@@ -254,7 +267,7 @@ mod test {
         let buffer: Vec<f64> = (0..1_000_000)
             .map(|_| uniform.sample(&mut rng) as f64)
             .collect();
-        let mut digest = RCSketch::new(4096);
+        let mut digest = RCSketch::new(1_000_000, 10);
         let mut linear_digest = LinearDigest::new();
         digest.add_buffer(&buffer);
         linear_digest.add_buffer(&buffer);
@@ -303,7 +316,7 @@ mod test {
         let buffer: Vec<f64> = (0..1_000_000)
             .map(|_| uniform.sample(&mut rng) as f64)
             .collect();
-        let mut digest = RCSketch::new(4096);
+        let mut digest = RCSketch::new(1_000_000, 10);
         let mut linear_digest = LinearDigest::new();
         digest.add_buffer(&buffer);
         linear_digest.add_buffer(&buffer);
@@ -346,15 +359,15 @@ mod test {
 
     #[test]
     fn est_value_at_quantile() {
-        let mut sketch = RCSketch::new(256);
+        let mut sketch = RCSketch::new(1024, 8);
         sketch.add_buffer(&gen_asc_vec(1000));
 
         println!("{:?}", sketch);
         assert_relative_eq!(sketch.est_value_at_quantile(0.0), 0.0, epsilon = 0.001);
         assert_relative_eq!(sketch.est_value_at_quantile(0.001), 1.0, epsilon = 0.1);
         assert_relative_eq!(sketch.est_value_at_quantile(0.1), 100.0, epsilon = 1.0);
-        assert_relative_eq!(sketch.est_value_at_quantile(0.5), 500.0, epsilon = 1.0);
-        assert_relative_eq!(sketch.est_value_at_quantile(1.0), 1000.0, epsilon = 3.0);
+        assert_relative_eq!(sketch.est_value_at_quantile(0.5), 500.0, epsilon = 4.0);
+        assert_relative_eq!(sketch.est_value_at_quantile(1.0), 1000.0, epsilon = 10.0);
         // assert_eq!(false, true);
     }
 }

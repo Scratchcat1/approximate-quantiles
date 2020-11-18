@@ -2,8 +2,8 @@ use approximate_quantiles::relative_compactor::RCSketch;
 use approximate_quantiles::traits::Digest;
 use approximate_quantiles::util::{gen_asc_vec, gen_uniform_vec};
 use criterion::{
-    black_box, criterion_group, criterion_main, AxisScale, BenchmarkId, Criterion,
-    PlotConfiguration, Throughput,
+    criterion_group, criterion_main, AxisScale, BenchmarkId, Criterion, PlotConfiguration,
+    Throughput,
 };
 use std::mem;
 
@@ -18,7 +18,7 @@ fn relative_compactor_in_order_range(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(size), size, |b, &size| {
             let test_input = gen_asc_vec(size);
             b.iter(|| {
-                let mut sketch = RCSketch::new(black_box(64));
+                let mut sketch = RCSketch::new(size as usize, 16);
                 test_input.iter().map(|x| sketch.add(*x)).for_each(drop);
             });
         });
@@ -37,7 +37,7 @@ fn relative_compactor_uniform_range(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(size), size, |b, &size| {
             let test_input = gen_uniform_vec(size);
             b.iter(|| {
-                let mut sketch = RCSketch::new(black_box(64));
+                let mut sketch = RCSketch::new(size as usize, 16);
                 test_input.iter().map(|x| sketch.add(*x)).for_each(drop);
             });
         });
@@ -56,7 +56,7 @@ fn relative_compactor_batch_in_order_range(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(size), size, |b, &size| {
             let test_input = gen_asc_vec(size);
             b.iter(|| {
-                let mut digest = RCSketch::new(black_box(64));
+                let mut digest = RCSketch::new(size as usize, 16);
                 digest.add_buffer(&test_input);
             });
         });
@@ -75,7 +75,7 @@ fn relative_compactor_batch_uniform_range(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(size), size, |b, &size| {
             let test_input = gen_uniform_vec(size);
             b.iter(|| {
-                let mut digest = RCSketch::new(black_box(64));
+                let mut digest = RCSketch::new(size as usize, 16);
                 digest.add_buffer(&test_input);
             });
         });
