@@ -1,6 +1,9 @@
 use approximate_quantiles::t_digest::centroid::Centroid;
-use approximate_quantiles::util::gen_uniform_centroid_vec;
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use approximate_quantiles::util::gen_uniform_vec;
+use criterion::{
+    black_box, criterion_group, criterion_main, AxisScale, BenchmarkId, Criterion,
+    PlotConfiguration, Throughput,
+};
 
 struct IntCentroid {
     pub mean: i64,
@@ -121,25 +124,6 @@ fn reference_benchmarks(c: &mut Criterion) {
                 vec.push(x);
             }
             black_box(vec);
-        });
-    });
-
-    c.bench_function("mergesort_in_order_centroids_100000", |b| {
-        b.iter(|| {
-            let mut buffer: Vec<Centroid> = (0..black_box(100000))
-                .map(|x| Centroid {
-                    mean: x as f64,
-                    weight: 1.0,
-                })
-                .collect();
-            buffer.sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
-        });
-    });
-
-    c.bench_function("mergesort_uniform_centroids_100000", |b| {
-        b.iter(|| {
-            let mut buffer: Vec<Centroid> = gen_uniform_centroid_vec(100_000);
-            buffer.sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
         });
     });
 
@@ -282,5 +266,24 @@ fn reference_benchmarks(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, reference_benchmarks);
+fn mergesort_uniform_range(c: &mut Criterion) {
+    // let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
+
+    let mut group = c.benchmark_group("mergesort_uniform_range");
+    // group.plot_config(plot_config);
+    for size in (0..20).map(|x| 1 << x) {
+        group.throughput(Throughput::Elements(size as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, &size| {
+            let test_input = gen_uniform_vec(size);
+            b.iter(|| {
+                let mut input_copy = test_input.clone();
+                input_copy.sort_by(|a, b| a.partial_cmp(&b).unwrap());
+                black_box(input_copy);
+            });
+        });
+    }
+    group.finish();
+}
+
+criterion_group!(benches, reference_benchmarks, mergesort_uniform_range);
 criterion_main!(benches);
