@@ -11,43 +11,6 @@ use criterion::{
 };
 use std::mem;
 
-// fn par_t_digest_add_buffer_in_order(c: &mut Criterion) {
-//     c.bench_function("par_t_digest_add_buffer_in_order_single", |b| {
-//         let mut digest = ParTDigest::new(10000, 50000, &|| TDigest::new(&k1, &inv_k1, 50.0));
-//         let mut input = 0..;
-//         b.iter(|| {
-//             digest.add_buffer(&vec![black_box(input.next().unwrap() as f64)]);
-//         })
-//     });
-//     c.bench_function("par_t_digest_add_buffer_in_order_100", |b| {
-//         b.iter(|| {
-//             let buffer = gen_asc_vec(100);
-//             let mut digest = ParTDigest::new(10000, 50000, &|| TDigest::new(&k1, &inv_k1, 50.0));
-//             digest.add_buffer(&buffer);
-//         })
-//     });
-
-//     c.bench_function("par_t_digest_add_buffer_in_order_10000", |b| {
-//         b.iter(|| {
-//             let buffer = gen_asc_vec(10_000);
-//             let mut digest = ParTDigest::new(10000, 50000, &|| TDigest::new(&k1, &inv_k1, 50.0));
-//             digest.add_buffer(&buffer);
-//         })
-//     });
-
-//     c.bench_function("par_t_digest_add_buffer_in_order_100000", |b| {
-//         b.iter_batched(
-//             || gen_asc_vec(100_000),
-//             |test_input| {
-//                 let mut digest =
-//                     ParTDigest::new(10000, 50000, &|| TDigest::new(&k1, &inv_k1, 50.0));
-//                 digest.add_buffer(&test_input);
-//             },
-//             BatchSize::SmallInput,
-//         )
-//     });
-// }
-
 fn par_t_digest_add_buffer_in_order_range(c: &mut Criterion) {
     let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
 
@@ -92,7 +55,6 @@ fn par_t_digest_add_buffer_uniform_range(c: &mut Criterion) {
 
 criterion_group!(
     benches,
-    // par_t_digest_add_buffer_in_order,
     par_t_digest_add_buffer_in_order_range,
     par_t_digest_add_buffer_uniform_range
 );

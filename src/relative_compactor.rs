@@ -27,9 +27,6 @@ impl Digest for RCSketch {
     fn add_buffer(&mut self, items: &[f64]) {
         let length = items.len() as u64;
         // Insert into the bottom buffer
-        // for item in items {
-        //     self.insert_at_rc(*item, 0, false);
-        // }
         items
             .chunks(self.buffer_size)
             .for_each(|chunk| self.insert_at_rc_batch(chunk, 0, false));
