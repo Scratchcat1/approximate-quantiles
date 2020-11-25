@@ -33,6 +33,20 @@ pub fn gen_uniform_centroid_vec(size: i32) -> Vec<Centroid> {
         .collect();
 }
 
+/// Generate a vector of random-weighted centroids from a uniform distribution
+/// # Arguments
+/// `size` Size of the vector to generate
+pub fn gen_uniform_centroid_random_weight_vec(size: i32) -> Vec<Centroid> {
+    let mut rng = rand::thread_rng();
+    let uniform = Uniform::from(0.0..1001.0);
+    return (0..size)
+        .map(|_| Centroid {
+            mean: uniform.sample(&mut rng) as f64,
+            weight: uniform.sample(&mut rng) as f64,
+        })
+        .collect();
+}
+
 /// Generate a vector of ascending values 0, 1, .., (size - 1)
 /// # Arguments
 /// `size` Size of the vector to generate
