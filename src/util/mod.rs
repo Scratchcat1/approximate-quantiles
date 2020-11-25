@@ -1,6 +1,7 @@
 use crate::t_digest::centroid::Centroid;
 use rand::distributions::{Distribution, Uniform};
 
+pub mod keyed_sum_tree;
 pub mod linear_digest;
 
 pub fn weighted_average(x1: f64, w1: f64, x2: f64, w2: f64) -> f64 {

@@ -199,18 +199,6 @@ fn t_digest_compression_comparison_uniform(c: &mut Criterion) {
             },
         );
 
-        group.bench_with_input(
-            BenchmarkId::new("add_cluster", delta),
-            &delta,
-            |b, &delta| {
-                let test_input = gen_uniform_centroid_vec(size);
-                b.iter(|| {
-                    let mut digest = TDigest::new(&k1, &inv_k1, delta);
-                    digest.add_cluster(test_input.clone(), 10.0);
-                });
-            },
-        );
-
         group.bench_with_input(BenchmarkId::new("buffered", delta), &delta, |b, &delta| {
             let test_input = gen_uniform_vec(size);
             b.iter(|| {
