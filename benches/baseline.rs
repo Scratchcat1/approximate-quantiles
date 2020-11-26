@@ -1,5 +1,6 @@
 use approximate_quantiles::t_digest::centroid::Centroid;
-use approximate_quantiles::util::gen_uniform_vec;
+use approximate_quantiles::util::keyed_sum_tree::KeyedSumTree;
+use approximate_quantiles::util::{gen_uniform_centroid_random_weight_vec, gen_uniform_vec};
 use criterion::{
     black_box, criterion_group, criterion_main, AxisScale, BenchmarkId, Criterion,
     PlotConfiguration, Throughput,
@@ -285,5 +286,47 @@ fn mergesort_uniform_range(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, reference_benchmarks, mergesort_uniform_range);
+fn keyed_sum_tree_from_vec(c: &mut Criterion) {
+    // let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
+
+    let mut group = c.benchmark_group("keyed_sum_tree_from_vec");
+    // group.plot_config(plot_config);
+    for size in (0..15).map(|x| 1 << x) {
+        group.throughput(Throughput::Elements(size as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, &size| {
+            let test_input = gen_uniform_centroid_random_weight_vec(size);
+            b.iter(|| {
+                let tree = KeyedSumTree::from(&test_input[..]);
+                black_box(tree);
+            });
+        });
+    }
+    group.finish();
+}
+
+fn keyed_sum_tree_less_than_sum(c: &mut Criterion) {
+    // let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
+
+    let mut group = c.benchmark_group("keyed_sum_tree_less_than_sum");
+    // group.plot_config(plot_config);
+    for size in (0..15).map(|x| 1 << x) {
+        group.throughput(Throughput::Elements(size as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, &size| {
+            let test_input = gen_uniform_centroid_random_weight_vec(size);
+            let tree = KeyedSumTree::from(&test_input[..]);
+            b.iter(|| {
+                black_box(tree.less_than_sum(10000.0));
+            });
+        });
+    }
+    group.finish();
+}
+
+criterion_group!(
+    benches,
+    reference_benchmarks,
+    mergesort_uniform_range,
+    keyed_sum_tree_from_vec,
+    keyed_sum_tree_less_than_sum
+);
 criterion_main!(benches);

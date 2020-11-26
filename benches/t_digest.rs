@@ -197,6 +197,36 @@ fn t_digest_comparison_uniform_range(c: &mut Criterion) {
     group.finish();
 }
 
+fn t_digest_add_cluster_comparison_uniform_range(c: &mut Criterion) {
+    // let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
+
+    let mut group = c.benchmark_group("t_digest_add_cluster_comparison_uniform_range");
+    // group.plot_config(plot_config);
+
+    for size in (0..20).map(|x| 1 << x) {
+        group.throughput(Throughput::Elements(size as u64));
+        group.bench_with_input(BenchmarkId::new("add_cluster", size), &size, |b, &size| {
+            let test_input = gen_uniform_centroid_vec(size);
+            b.iter(|| {
+                let mut digest = TDigest::new(&k1, &inv_k1, black_box(50.0));
+                digest.add_cluster(test_input.clone(), 10.0);
+            });
+        });
+        group.bench_with_input(
+            BenchmarkId::new("add_cluster_tree", size),
+            &size,
+            |b, &size| {
+                let test_input = gen_uniform_centroid_vec(size);
+                b.iter(|| {
+                    let mut digest = TDigest::new(&k1, &inv_k1, black_box(50.0));
+                    digest.add_cluster_tree(test_input.clone(), 10.0);
+                });
+            },
+        );
+    }
+    group.finish();
+}
+
 fn t_digest_compression_comparison_uniform(c: &mut Criterion) {
     // let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
 
@@ -242,10 +272,10 @@ fn t_digest_compression_comparison_uniform(c: &mut Criterion) {
 fn t_digest_add_cluster_compression_comparison_uniform(c: &mut Criterion) {
     // let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
 
-    let mut group = c.benchmark_group("t_digest_add_cluster_compression_comparison_uniform_10_000");
+    let mut group = c.benchmark_group("t_digest_add_cluster_compression_comparison_uniform_40_000");
     // group.plot_config(plot_config);
 
-    let size = 10_000;
+    let size = 40_000;
     // Delta is the compression parameter
     for delta in (4..14).map(|x| (1 << x) as f64) {
         group.bench_with_input(
@@ -283,6 +313,7 @@ criterion_group!(
     t_digest_add_cluster_tree_uniform_range,
     t_digest_util,
     t_digest_comparison_uniform_range,
+    t_digest_add_cluster_comparison_uniform_range,
     t_digest_compression_comparison_uniform,
     t_digest_add_cluster_compression_comparison_uniform
 );
