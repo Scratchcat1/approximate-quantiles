@@ -147,7 +147,7 @@ impl KeyedSumNode {
 }
 
 #[derive(Debug)]
-struct KeyedSumTree {
+pub struct KeyedSumTree {
     root: Option<Box<KeyedSumNode>>,
 }
 

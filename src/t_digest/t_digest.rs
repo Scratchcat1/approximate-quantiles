@@ -1,7 +1,10 @@
 #![allow(dead_code)]
 use crate::t_digest::centroid::Centroid;
 use crate::traits::Digest;
+use crate::util::keyed_sum_tree::KeyedSumTree;
 use crate::util::weighted_average;
+use rand::seq::SliceRandom;
+use rand::thread_rng;
 use rayon::prelude::*;
 
 pub struct TDigest<F, G>
@@ -238,6 +241,16 @@ where
     /// * `growth_limit` Factor to limit excessive growth of the digest by merging periodically
     pub fn add_cluster(&mut self, clusters: Vec<Centroid>, growth_limit: f64) {
         self.update_limits(&clusters);
+        // let use_k_size_tree = true;
+        let mut total_weight = self.total_weight();
+        let mut k_size_tree = if false {
+            let mut rng = thread_rng();
+            let mut cloned_centroids = self.centroids.clone();
+            cloned_centroids.shuffle(&mut rng);
+            Some(KeyedSumTree::from(&cloned_centroids[..]))
+        } else {
+            None
+        };
         for x in clusters {
             let close_centroids = self.find_closest_centroids(&x);
             match close_centroids {
@@ -246,7 +259,24 @@ where
                     // selecting the one with the minimum weight
                     let mut min_acceptable_index = None;
                     for index in indexes {
-                        if self.k_size(&(&x + &self.centroids[index])).abs() < 1.0 {
+                        let new_centroid = &x + &self.centroids[index];
+                        let centroid_fits = k_size_tree
+                            .as_mut()
+                            .and_then(|tree| {
+                                Some(
+                                    self.k_size_from_weights(
+                                        new_centroid.mean,
+                                        tree.less_than_sum(new_centroid.mean).unwrap_or(0.0),
+                                        total_weight + x.weight,
+                                    )
+                                    .abs()
+                                        < 1.0,
+                                )
+                            })
+                            .unwrap_or_else(|| {
+                                self.k_size(&new_centroid, total_weight).abs() < 1.0
+                            });
+                        if centroid_fits {
                             match min_acceptable_index {
                                 None => min_acceptable_index = Some(index),
                                 Some(other_index) => {
@@ -265,12 +295,21 @@ where
                         Some(index) => {
                             // Merge the current centroid with the centroid in the digest
                             let mut merge = &mut self.centroids[index];
+                            total_weight += x.weight;
+                            k_size_tree.as_mut().map(|tree| tree.delete(merge.mean));
                             merge.mean = (merge.mean * merge.weight + x.mean * x.weight)
                                 / (merge.weight + x.weight);
                             merge.weight += x.weight;
+                            k_size_tree
+                                .as_mut()
+                                .map(|tree| tree.insert(merge.mean, merge.weight));
                         }
                         None => {
                             // No suitable centroid in the digest was found, insert the current centroid into the digest
+                            k_size_tree
+                                .as_mut()
+                                .map(|tree| tree.insert(x.mean, x.weight));
+                            total_weight += x.weight;
                             match self
                                 .centroids
                                 .binary_search_by(|probe| probe.mean.partial_cmp(&x.mean).unwrap())
@@ -283,6 +322,10 @@ where
                 }
                 None => {
                     // No suitable centroid in the digest was found, insert the current centroid into the digest
+                    k_size_tree
+                        .as_mut()
+                        .map(|tree| tree.insert(x.mean, x.weight));
+                    total_weight += x.weight;
                     match self
                         .centroids
                         .binary_search_by(|probe| probe.mean.partial_cmp(&x.mean).unwrap())
@@ -296,6 +339,12 @@ where
             // Prevent excess growth with particular insertion patterns by periodically merging
             if self.centroids.len() > (growth_limit * self.compress_factor) as usize {
                 self.add_buffer(&Vec::new());
+                k_size_tree = k_size_tree.map(|_| {
+                    let mut rng = thread_rng();
+                    let mut cloned_centroids = self.centroids.clone();
+                    cloned_centroids.shuffle(&mut rng);
+                    KeyedSumTree::from(&cloned_centroids[..])
+                });
             }
         }
         // Don't perform a final merge, this significantly improves performance while digest size is still bounded by the growth limit.
@@ -375,12 +424,20 @@ where
 
     /// Calculate the k_size for the target centroid
     /// This is the scaled different between the left and right quartile of the centroid
-    pub fn k_size(&self, target_centroid: &Centroid) -> f64 {
-        let new_total_weight = self.total_weight() + target_centroid.weight;
+    pub fn k_size(&self, target_centroid: &Centroid, total_weight: f64) -> f64 {
+        let new_total_weight = total_weight + target_centroid.weight;
 
         // Calculate the left and right quartiles
-        let q_left = self.weight_left(target_centroid) / new_total_weight;
-        let q_right = q_left + target_centroid.weight / new_total_weight;
+        self.k_size_from_weights(
+            target_centroid.weight,
+            self.weight_left(target_centroid),
+            new_total_weight,
+        )
+    }
+
+    pub fn k_size_from_weights(&self, weight: f64, weight_left: f64, new_total_weight: f64) -> f64 {
+        let q_left = weight_left / new_total_weight;
+        let q_right = q_left + weight / new_total_weight;
         (self.scale_func)(q_right, self.compress_factor, new_total_weight)
             - (self.scale_func)(q_left, self.compress_factor, new_total_weight)
     }

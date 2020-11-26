@@ -81,7 +81,7 @@ fn t_digest_add_cluster_uniform_range(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(size), size, |b, &size| {
             let test_input = gen_uniform_centroid_vec(size);
             b.iter(|| {
-                let mut digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
+                let mut digest = TDigest::new(&k1, &inv_k1, black_box(2000.0));
                 digest.add_cluster(test_input.clone(), 5.0);
             });
         });
@@ -106,18 +106,18 @@ fn t_digest_util(c: &mut Criterion) {
         })
     });
 
-    c.bench_function("t_digest_util_k_size", |b| {
-        let buffer = gen_asc_centroid_vec(100_000);
-        let mut digest = TDigest::new(&k1, &inv_k1, 20.0);
-        digest.add_centroid_buffer(buffer);
-        let mut iterator = 0..;
-        b.iter(|| {
-            digest.k_size(black_box(&Centroid {
-                mean: iterator.next().unwrap() as f64,
-                weight: 1.0,
-            }));
-        })
-    });
+    // c.bench_function("t_digest_util_k_size", |b| {
+    //     let buffer = gen_asc_centroid_vec(100_000);
+    //     let mut digest = TDigest::new(&k1, &inv_k1, 20.0);
+    //     digest.add_centroid_buffer(buffer);
+    //     let mut iterator = 0..;
+    //     b.iter(|| {
+    //         digest.k_size(black_box(&Centroid {
+    //             mean: iterator.next().unwrap() as f64,
+    //             weight: 1.0,
+    //         }));
+    //     })
+    // });
 
     c.bench_function("t_digest_util_find_closest_centroids", |b| {
         let buffer = gen_asc_centroid_vec(100_000);
