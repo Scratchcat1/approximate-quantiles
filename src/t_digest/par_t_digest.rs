@@ -3,6 +3,7 @@ use crate::t_digest::t_digest::TDigest;
 use crate::traits::Digest;
 use rayon::prelude::*;
 
+#[derive(Clone)]
 pub struct ParTDigest<C, F, G>
 where
     F: Fn(f64, f64, f64) -> f64 + Sync,

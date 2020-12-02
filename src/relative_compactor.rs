@@ -1,7 +1,7 @@
 use crate::traits::Digest;
 use std::cmp::Ordering;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RCSketch {
     /// Vector of relative compactors
     pub buffers: Vec<Vec<f64>>,

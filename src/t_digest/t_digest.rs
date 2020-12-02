@@ -7,6 +7,7 @@ use rand::seq::SliceRandom;
 use rand::thread_rng;
 use rayon::prelude::*;
 
+#[derive(Clone)]
 pub struct TDigest<F, G>
 where
     F: Fn(f64, f64, f64) -> f64,
@@ -622,7 +623,7 @@ mod test {
         assert_relative_eq!(
             digest.est_value_at_quantile(0.0) / linear_digest.est_value_at_quantile(0.0),
             1.0,
-            epsilon = 0.0005
+            epsilon = 0.00005
         );
         assert_relative_eq!(
             digest.est_value_at_quantile(0.001) / linear_digest.est_value_at_quantile(0.001),
