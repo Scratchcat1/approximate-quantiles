@@ -1,5 +1,6 @@
 use crate::traits::Digest;
 
+#[derive(Clone)]
 pub struct BufferedDigest<T>
 where
     T: Digest,

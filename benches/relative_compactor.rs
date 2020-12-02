@@ -83,21 +83,21 @@ fn relative_compactor_comparison_uniform_range(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("default", size), &size, |b, &size| {
             let test_input = gen_uniform_vec(size);
             b.iter(|| {
-                let mut sketch = RCSketch::new(size as usize, 16);
+                let mut sketch = RCSketch::new(size as usize, 64);
                 test_input.iter().map(|x| sketch.add(*x)).for_each(drop);
             });
         });
         group.bench_with_input(BenchmarkId::new("buffer", size), &size, |b, &size| {
             let test_input = gen_uniform_vec(size);
             b.iter(|| {
-                let mut sketch = RCSketch::new(size as usize, 16);
+                let mut sketch = RCSketch::new(size as usize, 64);
                 sketch.add_buffer(&test_input)
             });
         });
         group.bench_with_input(BenchmarkId::new("buffer_fast", size), &size, |b, &size| {
             let test_input = gen_uniform_vec(size);
             b.iter(|| {
-                let mut sketch = RCSketch::new(size as usize, 16);
+                let mut sketch = RCSketch::new(size as usize, 64);
                 sketch.add_buffer_fast(&test_input);
             });
         });

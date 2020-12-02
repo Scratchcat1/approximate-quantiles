@@ -206,15 +206,83 @@ impl KeyedSumTree {
 
     pub fn less_than_sum(&self, key: f64) -> Option<f64> {
         if let Some(root) = &self.root {
-            Some(root.less_than_sum(key))
+            // Some(root.less_than_sum(key))
+            let mut current = root;
+            let mut sum = 0.0;
+            loop {
+                match (
+                    key.partial_cmp(&current.key).unwrap(),
+                    &current.left_child,
+                    &current.right_child,
+                ) {
+                    (Less, None, _) => break,
+                    (Less, Some(left), _) => current = left,
+                    (Equal, None, _) => break,
+                    (Equal, Some(left), _) => current = left,
+                    (Greater, None, None) => {
+                        sum += current.weight;
+                        break;
+                    }
+                    (Greater, Some(left), None) => {
+                        sum += current.weight + left.sum;
+                        break;
+                    }
+                    (Greater, None, Some(right)) => {
+                        sum += current.weight;
+                        current = right;
+                    }
+                    (Greater, Some(left), Some(right)) => {
+                        sum += current.weight + left.sum;
+                        current = right;
+                    }
+                };
+            }
+            Some(sum)
         } else {
             None
         }
     }
 
+    // pub fn insert(&mut self, key: f64, weight: f64) {
+    //     if let Some(root) = &mut self.root {
+    //         root.insert(key, weight);
+    //     } else {
+    //         self.root = Some(Box::new(KeyedSumNode::new(key, weight)));
+    //     }
+    // }
+
     pub fn insert(&mut self, key: f64, weight: f64) {
         if let Some(root) = &mut self.root {
-            root.insert(key, weight);
+            // root.insert(key, weight);
+            let mut current = root;
+            loop {
+                current.sum += weight;
+                if key < current.key {
+                    match current.left_child.is_none() {
+                        true => {
+                            current.left_child = Some(Box::new(KeyedSumNode::new(key, weight)));
+                            break;
+                        }
+                        false => {
+                            current = current.left_child.as_mut().unwrap();
+                            // current.weight += weight;
+                        }
+                    }
+                } else if current.key < key {
+                    match current.right_child.is_none() {
+                        true => {
+                            current.right_child = Some(Box::new(KeyedSumNode::new(key, weight)));
+                            break;
+                        }
+                        false => {
+                            current = current.right_child.as_mut().unwrap();
+                            // current.weight += weight;
+                        }
+                    }
+                } else {
+                    panic!("KeyedSumNode is not designed to have identical key nodes");
+                }
+            }
         } else {
             self.root = Some(Box::new(KeyedSumNode::new(key, weight)));
         }
@@ -233,76 +301,7 @@ impl KeyedSumTree {
             self.root = KeyedSumNode::delete(root, target_key);
         }
     }
-
-    // pub fn find_mut(&mut self, target_key: f64) -> &mut Option<Box<KeyedSumNode>> {
-    //     let mut anchor = &mut self.root;
-    //     loop {
-    //         match { anchor } {
-    //             &mut Some(ref mut node) if target_key != node.key => {
-    //                 anchor = if target_key < node.key {
-    //                     &mut node.left_child
-    //                 } else {
-    //                     &mut node.right_child
-    //                 }
-    //             }
-
-    //             other @ &mut Some(_) | other @ &mut None => return other,
-    //         }
-    //     }
-    // }
-
-    // pub fn delete(&mut self, target_key: f64) {
-    //     if let Some(target_node) = self.find(target_key) {
-    //         let weight = target_node.weight;
-
-    //         // Remove the target node weight from all of the parent nodes
-    //         let mut current = &mut self.root;
-    //         while let Some(ref mut node) = *current {
-    //             node.weight -= weight;
-    //             match node.key.partial_cmp(&target_key).unwrap() {
-    //                 Less => current = &mut node.left_child,
-    //                 Greater => current = &mut node.left_child,
-    //                 Equal => break,
-    //             }
-    //         }
-    //         // if let Some(successor(mut next: &mut Option<Box<KeyedSumNode>>))
-    //     }
-    // }
 }
-
-// fn successor(mut next: &mut Option<Box<KeyedSumNode>>) -> &mut Option<Box<KeyedSumNode>> {
-//     loop {
-//         match { next } {
-//             &mut Some(ref mut node) if node.left_child.is_some() => next = &mut node.left_child,
-//             other @ &mut Some(_) => return other,
-//             _ => unreachable!(),
-//         }
-//     }
-// }
-
-// fn successor(mut next: &mut Option<Box<KeyedSumNode>>) -> &mut Option<Box<KeyedSumNode>> {
-//     loop {
-//         match { next } {
-//             &mut Some(ref mut node) if node.left_child.is_some() => next = &mut node.left_child,
-//             other @ &mut Some(_) => return other,
-//             _ => unreachable!(),
-//         }
-//     }
-// }
-
-// struct KeyedSumNode {
-//     key: f64,
-//     left_sum: f64,
-// }
-
-// struct KeyedSumTree {
-//     // An unbalanced tree would be very space inefficient
-//     tree: Vec<Option<KeyedSumNode>>,
-// }
-
-// impl KeyedSumTree {
-//     pub fn insert(&mut self, key: f64, value: f64) {}
-// }
 
 impl From<&[Centroid]> for KeyedSumTree {
     fn from(slice: &[Centroid]) -> Self {

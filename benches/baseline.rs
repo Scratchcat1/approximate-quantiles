@@ -1,10 +1,8 @@
 use approximate_quantiles::t_digest::centroid::Centroid;
 use approximate_quantiles::util::keyed_sum_tree::KeyedSumTree;
 use approximate_quantiles::util::{gen_uniform_centroid_random_weight_vec, gen_uniform_vec};
-use criterion::{
-    black_box, criterion_group, criterion_main, AxisScale, BenchmarkId, Criterion,
-    PlotConfiguration, Throughput,
-};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use rayon::prelude::*;
 
 struct IntCentroid {
     pub mean: i64,
@@ -274,11 +272,20 @@ fn mergesort_uniform_range(c: &mut Criterion) {
     // group.plot_config(plot_config);
     for size in (0..20).map(|x| 1 << x) {
         group.throughput(Throughput::Elements(size as u64));
-        group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, &size| {
+        group.bench_with_input(BenchmarkId::new("sort_by", size), &size, |b, &size| {
             let test_input = gen_uniform_vec(size);
             b.iter(|| {
                 let mut input_copy = test_input.clone();
                 input_copy.sort_by(|a, b| a.partial_cmp(&b).unwrap());
+                black_box(input_copy);
+            });
+        });
+
+        group.bench_with_input(BenchmarkId::new("par_sort_by", size), &size, |b, &size| {
+            let test_input = gen_uniform_vec(size);
+            b.iter(|| {
+                let mut input_copy = test_input.clone();
+                input_copy.par_sort_by(|a, b| a.partial_cmp(&b).unwrap());
                 black_box(input_copy);
             });
         });
@@ -322,11 +329,32 @@ fn keyed_sum_tree_less_than_sum(c: &mut Criterion) {
     group.finish();
 }
 
+fn keyed_sum_tree_delete(c: &mut Criterion) {
+    // let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
+
+    let mut group = c.benchmark_group("keyed_sum_tree_delete");
+    // group.plot_config(plot_config);
+    for size in (0..15).map(|x| 1 << x) {
+        group.throughput(Throughput::Elements(size as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, &size| {
+            let test_input = gen_uniform_centroid_random_weight_vec(size);
+            b.iter(|| {
+                let mut tree = KeyedSumTree::from(&test_input[..]);
+                for input in &test_input {
+                    black_box(tree.delete(input.mean));
+                }
+            });
+        });
+    }
+    group.finish();
+}
+
 criterion_group!(
     benches,
     reference_benchmarks,
     mergesort_uniform_range,
     keyed_sum_tree_from_vec,
-    keyed_sum_tree_less_than_sum
+    keyed_sum_tree_less_than_sum,
+    keyed_sum_tree_delete
 );
 criterion_main!(benches);
