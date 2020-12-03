@@ -143,18 +143,21 @@ impl KeyedSumNode {
         }
     }
 
-    fn sorted_vec_key(&self, vec: &mut Vec<f64>) {
+    fn sorted_vec_key(&self, vec: &mut Vec<Centroid>) {
         if let Some(child) = &self.left_child {
             child.sorted_vec_key(vec);
         }
-        vec.push(self.weight);
+        vec.push(Centroid::new(self.key, self.weight));
         if let Some(child) = &self.right_child {
             child.sorted_vec_key(vec);
         }
     }
 
-    fn closest_keys(&self, target_key: f64, vec: &mut Vec<f64>) {
-        vec.push(self.weight);
+    fn closest_keys(&self, target_key: f64, vec: &mut Vec<Centroid>) {
+        vec.push(Centroid {
+            mean: self.key,
+            weight: self.weight,
+        });
         match target_key.partial_cmp(&self.key).unwrap() {
             Less => {
                 if let Some(child) = &self.right_child {
@@ -329,7 +332,7 @@ impl KeyedSumTree {
         }
     }
 
-    pub fn sorted_vec_key(&self) -> Vec<f64> {
+    pub fn sorted_vec_key(&self) -> Vec<Centroid> {
         if let Some(root) = &self.root {
             let mut vec = Vec::new();
             root.sorted_vec_key(&mut vec);
@@ -339,21 +342,22 @@ impl KeyedSumTree {
         }
     }
 
-    pub fn closest_keys(&self, target_key: f64) -> Vec<f64> {
+    pub fn closest_keys(&self, target_key: f64) -> Vec<Centroid> {
         if let Some(root) = &self.root {
             let mut vec = Vec::new();
             root.closest_keys(target_key, &mut vec);
-            let min = *vec
+            let min = vec
                 .iter()
                 .min_by(|a, b| {
-                    (**a - target_key)
+                    (a.mean - target_key)
                         .abs()
-                        .partial_cmp(&(**b - target_key).abs())
+                        .partial_cmp(&(b.mean - target_key).abs())
                         .unwrap()
                 })
-                .unwrap();
+                .unwrap()
+                .clone();
             vec.into_iter()
-                .filter(|x| (x - target_key).abs() == min)
+                .filter(|x| (x.mean - target_key).abs() == min.mean)
                 .collect()
         } else {
             Vec::new()

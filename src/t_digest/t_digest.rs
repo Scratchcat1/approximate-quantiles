@@ -323,14 +323,14 @@ where
         cloned_centroids.shuffle(&mut rng);
         let mut k_size_tree = KeyedSumTree::from(&cloned_centroids[..]);
         for x in clusters {
-            let close_centroids = self.find_closest_centroids(&x);
-            match close_centroids {
-                Some(indexes) => {
-                    // Find the index of a centroid with space to merge the current centroid
+            let closest_centroids = k_size_tree.closest_keys(x.mean);
+            match closest_centroids.is_empty() {
+                false => {
+                    // Find the centroid with space to merge the current centroid
                     // selecting the one with the minimum weight
-                    let mut min_acceptable_index = None;
-                    for index in indexes {
-                        let new_mean = (&x + &self.centroids[index]).mean;
+                    let mut closest_acceptable_centroid = None;
+                    for close_centroid in closest_centroids {
+                        let new_mean = (&x + &close_centroid).mean;
                         if self
                             .k_size_from_weights(
                                 new_mean,
@@ -340,67 +340,55 @@ where
                             .abs()
                             < 1.0
                         {
-                            match min_acceptable_index {
-                                None => min_acceptable_index = Some(index),
-                                Some(other_index) => {
-                                    if self.centroids[other_index].mean
-                                        * self.centroids[other_index].weight
-                                        > self.centroids[index].mean * self.centroids[index].weight
+                            match &closest_acceptable_centroid {
+                                None => closest_acceptable_centroid = Some(close_centroid),
+                                Some(other) => {
+                                    if other.mean * other.weight
+                                        > close_centroid.mean * close_centroid.weight
                                     {
-                                        min_acceptable_index = Some(index)
+                                        closest_acceptable_centroid = Some(close_centroid)
                                     }
                                 }
                             }
                         }
                     }
 
-                    match min_acceptable_index {
-                        Some(index) => {
+                    match closest_acceptable_centroid {
+                        Some(ref mut closest_centroid) => {
                             // Merge the current centroid with the centroid in the digest
-                            let mut merge = &mut self.centroids[index];
                             total_weight += x.weight;
-                            k_size_tree.delete(merge.mean);
-                            merge.mean = (merge.mean * merge.weight + x.mean * x.weight)
-                                / (merge.weight + x.weight);
-                            merge.weight += x.weight;
-                            k_size_tree.insert(merge.mean, merge.weight);
+                            k_size_tree.delete(closest_centroid.mean);
+
+                            let mean = (closest_centroid.mean * closest_centroid.weight
+                                + x.mean * x.weight)
+                                / (closest_centroid.weight + x.weight);
+                            let weight = closest_centroid.weight + x.weight;
+                            k_size_tree.insert(mean, weight);
                         }
                         None => {
                             // No suitable centroid in the digest was found, insert the current centroid into the digest
                             k_size_tree.insert(x.mean, x.weight);
                             total_weight += x.weight;
-                            match self
-                                .centroids
-                                .binary_search_by(|probe| probe.mean.partial_cmp(&x.mean).unwrap())
-                            {
-                                Ok(index) => self.centroids.insert(index, x),
-                                Err(index) => self.centroids.insert(index, x),
-                            }
                         }
                     }
                 }
-                None => {
+                true => {
                     // No suitable centroid in the digest was found, insert the current centroid into the digest
                     k_size_tree.insert(x.mean, x.weight);
                     total_weight += x.weight;
-                    match self
-                        .centroids
-                        .binary_search_by(|probe| probe.mean.partial_cmp(&x.mean).unwrap())
-                    {
-                        Ok(index) => self.centroids.insert(index, x),
-                        Err(index) => self.centroids.insert(index, x),
-                    }
                 }
             }
 
             // Prevent excess growth with particular insertion patterns by periodically merging
             if self.centroids.len() > (growth_limit * self.compress_factor) as usize {
+                self.centroids = k_size_tree.sorted_vec_key();
                 self.add_buffer(&Vec::new());
                 let mut cloned_centroids = self.centroids.clone();
                 cloned_centroids.shuffle(&mut rng);
                 k_size_tree = KeyedSumTree::from(&cloned_centroids[..]);
             }
         }
+        self.centroids = k_size_tree.sorted_vec_key();
         // Don't perform a final merge, this significantly improves performance while digest size is still bounded by the growth limit.
     }
 

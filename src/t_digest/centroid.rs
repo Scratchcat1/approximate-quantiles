@@ -9,6 +9,12 @@ pub struct Centroid {
     pub weight: f64,
 }
 
+impl Centroid {
+    pub fn new(mean: f64, weight: f64) -> Self {
+        Self { mean, weight }
+    }
+}
+
 impl Add for Centroid {
     type Output = Self;
 
