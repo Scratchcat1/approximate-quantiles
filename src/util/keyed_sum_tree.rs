@@ -160,13 +160,13 @@ impl KeyedSumNode {
         });
         match target_key.partial_cmp(&self.key).unwrap() {
             Less => {
-                if let Some(child) = &self.right_child {
+                if let Some(child) = &self.left_child {
                     child.closest_keys(target_key, vec);
                 }
             }
             Equal => {}
             Greater => {
-                if let Some(child) = &self.left_child {
+                if let Some(child) = &self.right_child {
                     child.closest_keys(target_key, vec);
                 }
             }
@@ -213,6 +213,7 @@ impl KeyedSumNode {
 #[derive(Debug)]
 pub struct KeyedSumTree {
     root: Option<Box<KeyedSumNode>>,
+    size: usize,
 }
 
 // Based on https://codereview.stackexchange.com/questions/133209/binary-tree-implementation-in-rust
@@ -231,7 +232,10 @@ impl KeyedSumTree {
     // }
 
     pub fn new() -> Self {
-        KeyedSumTree { root: None }
+        KeyedSumTree {
+            root: None,
+            size: 0,
+        }
     }
 
     pub fn less_than_sum(&self, key: f64) -> Option<f64> {
@@ -316,6 +320,7 @@ impl KeyedSumTree {
         } else {
             self.root = Some(Box::new(KeyedSumNode::new(key, weight)));
         }
+        self.size += 1;
     }
 
     pub fn update(&mut self, key: f64, new_weight: f64) -> Option<f64> {
@@ -330,6 +335,7 @@ impl KeyedSumTree {
         if let Some(root) = self.root.take() {
             self.root = KeyedSumNode::delete(root, target_key);
         }
+        self.size -= 1;
     }
 
     pub fn sorted_vec_key(&self) -> Vec<Centroid> {
@@ -357,11 +363,17 @@ impl KeyedSumTree {
                 .unwrap()
                 .clone();
             vec.into_iter()
-                .filter(|x| (x.mean - target_key).abs() == min.mean)
+                .filter(|x| {
+                    ((x.mean - target_key).abs() - (min.mean - target_key).abs()).abs() < 0.001
+                })
                 .collect()
         } else {
             Vec::new()
         }
+    }
+
+    pub fn size(&self) -> usize {
+        self.size
     }
 }
 
@@ -400,6 +412,7 @@ mod test {
         tree.insert(25.0, 1.0);
         tree.insert(-100.0, 5.0);
         println!("{:?}", tree);
+        assert_eq!(tree.size(), 4);
 
         assert_relative_eq!(tree.less_than_sum(-101.0).unwrap(), 0.0);
         assert_relative_eq!(tree.less_than_sum(-100.0).unwrap(), 0.0);
@@ -430,6 +443,8 @@ mod test {
             tree.insert(centroid.mean, centroid.weight);
         }
 
+        assert_eq!(tree.size(), 1_000);
+
         centroids.sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
 
         let mut sum = 0.0;
@@ -448,6 +463,7 @@ mod test {
         for centroid in removed {
             tree.delete(centroid.mean);
         }
+        assert_eq!(tree.size(), 500);
 
         let mut sum = 0.0;
         for centroid in centroids.iter() {

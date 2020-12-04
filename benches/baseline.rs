@@ -349,12 +349,50 @@ fn keyed_sum_tree_delete(c: &mut Criterion) {
     group.finish();
 }
 
+fn keyed_sum_tree_closest_keys(c: &mut Criterion) {
+    // let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
+
+    let mut group = c.benchmark_group("keyed_sum_tree_closest_keys");
+    // group.plot_config(plot_config);
+    for size in (0..15).map(|x| 1 << x) {
+        group.throughput(Throughput::Elements(size as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, &size| {
+            let test_input = gen_uniform_centroid_random_weight_vec(size);
+            let tree = KeyedSumTree::from(&test_input[..]);
+            b.iter(|| {
+                black_box(tree.closest_keys(10000.0));
+            });
+        });
+    }
+    group.finish();
+}
+
+fn keyed_sum_tree_sorted_vec_key(c: &mut Criterion) {
+    // let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
+
+    let mut group = c.benchmark_group("keyed_sum_tree_sorted_vec_key");
+    // group.plot_config(plot_config);
+    for size in (0..15).map(|x| 1 << x) {
+        group.throughput(Throughput::Elements(size as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, &size| {
+            let test_input = gen_uniform_centroid_random_weight_vec(size);
+            let tree = KeyedSumTree::from(&test_input[..]);
+            b.iter(|| {
+                black_box(tree.sorted_vec_key());
+            });
+        });
+    }
+    group.finish();
+}
+
 criterion_group!(
     benches,
     reference_benchmarks,
     mergesort_uniform_range,
     keyed_sum_tree_from_vec,
     keyed_sum_tree_less_than_sum,
-    keyed_sum_tree_delete
+    keyed_sum_tree_delete,
+    keyed_sum_tree_closest_keys,
+    keyed_sum_tree_sorted_vec_key
 );
 criterion_main!(benches);

@@ -354,7 +354,7 @@ where
                     }
 
                     match closest_acceptable_centroid {
-                        Some(ref mut closest_centroid) => {
+                        Some(closest_centroid) => {
                             // Merge the current centroid with the centroid in the digest
                             total_weight += x.weight;
                             k_size_tree.delete(closest_centroid.mean);
@@ -380,7 +380,7 @@ where
             }
 
             // Prevent excess growth with particular insertion patterns by periodically merging
-            if self.centroids.len() > (growth_limit * self.compress_factor) as usize {
+            if k_size_tree.size() > (growth_limit * self.compress_factor) as usize {
                 self.centroids = k_size_tree.sorted_vec_key();
                 self.add_buffer(&Vec::new());
                 let mut cloned_centroids = self.centroids.clone();

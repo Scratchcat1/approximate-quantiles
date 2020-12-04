@@ -90,10 +90,10 @@ fn t_digest_add_cluster_uniform_range(c: &mut Criterion) {
 }
 
 fn t_digest_add_cluster_tree_uniform_range(c: &mut Criterion) {
-    let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
+    // let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
 
     let mut group = c.benchmark_group("t_digest_add_cluster_tree_uniform_range");
-    group.plot_config(plot_config);
+    // group.plot_config(plot_config);
 
     for size in [1, 10, 100, 1_000, 10_000, 100_000, 1_000_000].iter() {
         group.throughput(Throughput::Elements(*size as u64));
