@@ -421,7 +421,7 @@ mod test {
         let buffer: Vec<f64> = (0..1_000_000)
             .map(|_| uniform.sample(&mut rng) as f64)
             .collect();
-        let mut digest = RCSketch::new(1_000_000, 315);
+        let mut digest = RCSketch::new(1_000_000, 320);
         let mut linear_digest = LinearDigest::new();
         digest.add_buffer_fast(&buffer);
         linear_digest.add_buffer(&buffer);

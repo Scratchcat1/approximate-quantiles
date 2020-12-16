@@ -20,7 +20,14 @@ impl Digest for LinearDigest {
     }
 
     fn est_quantile_at_value(&mut self, target_value: f64) -> f64 {
-        self.values.iter().filter(|x| **x < target_value).count() as f64 / self.values.len() as f64
+        let less_than = self.values.iter().filter(|x| **x < target_value).count() as f64;
+        let equal_to = self.values.iter().filter(|x| **x == target_value).count() as f64;
+        if equal_to <= 1.0 {
+            // If the one or zero such values exist there are not values to the left of the midpoint of values equal to the target value.
+            less_than / self.values.len() as f64
+        } else {
+            (less_than + equal_to / 2.0) / self.values.len() as f64
+        }
     }
 
     fn est_value_at_quantile(&mut self, target_quantile: f64) -> f64 {
@@ -62,10 +69,14 @@ mod test {
             .map(|_| uniform.sample(&mut rng) as f64)
             .collect();
 
+        // dataset.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let mut digest = LinearDigest::new();
         digest.add_buffer(&dataset);
 
-        assert_relative_eq!(digest.est_quantile_at_value(0.0), 0.0);
+        assert_relative_eq!(
+            digest.est_quantile_at_value(0.0),
+            0.5 * dataset.iter().filter(|x| **x == 0.0).count() as f64 / dataset.len() as f64
+        );
         assert_relative_eq!(digest.est_quantile_at_value(250.0), 0.25, epsilon = 0.01);
         assert_relative_eq!(digest.est_quantile_at_value(500.0), 0.5, epsilon = 0.01);
         assert_relative_eq!(digest.est_quantile_at_value(750.0), 0.75, epsilon = 0.01);

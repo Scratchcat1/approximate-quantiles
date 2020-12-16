@@ -247,15 +247,39 @@ mod test {
 
     #[test]
     fn est_quantile_at_value() {
-        let buffer: Vec<f64> = (0..1001).map(|x| -500.0 + x as f64).collect();
-        let mut digest = ParTDigest::new(32, 128, &|| TDigest::new(&k1, &inv_k1, 20.0));
+        let buffer: Vec<f64> = (0..1000).map(|x| -500.0 + x as f64).collect();
+        let mut digest = ParTDigest::new(128, 256, &|| TDigest::new(&k1, &inv_k1, 20.0));
         digest.add_buffer(&buffer);
 
-        assert_relative_eq!(digest.est_quantile_at_value(-500.0), 0.0);
-        assert_relative_eq!(digest.est_quantile_at_value(-250.0), 0.25, epsilon = 0.001);
-        assert_relative_eq!(digest.est_quantile_at_value(0.0), 0.5, epsilon = 0.001);
-        assert_relative_eq!(digest.est_quantile_at_value(250.0), 0.75, epsilon = 0.001);
-        assert_relative_eq!(digest.est_quantile_at_value(500.0), 1.0);
+        let mut linear_digest = LinearDigest::new();
+        linear_digest.add_buffer(&buffer);
+
+        println!("Centroids {:?}", digest.digest.centroids);
+        assert_relative_eq!(
+            digest.est_quantile_at_value(-500.0),
+            linear_digest.est_quantile_at_value(-500.0),
+            epsilon = 0.0005
+        );
+        assert_relative_eq!(
+            digest.est_quantile_at_value(-250.0) / linear_digest.est_quantile_at_value(-250.0),
+            1.0,
+            epsilon = 0.0025
+        );
+        assert_relative_eq!(
+            digest.est_quantile_at_value(0.0) / linear_digest.est_quantile_at_value(0.0),
+            1.0,
+            epsilon = 0.001
+        );
+        assert_relative_eq!(
+            digest.est_quantile_at_value(250.0) / linear_digest.est_quantile_at_value(250.0),
+            1.0,
+            epsilon = 0.001
+        );
+        assert_relative_eq!(
+            digest.est_quantile_at_value(500.0) / linear_digest.est_quantile_at_value(500.0),
+            1.0,
+            epsilon = 0.0005
+        );
     }
 
     #[test]

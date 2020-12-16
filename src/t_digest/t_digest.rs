@@ -52,56 +52,139 @@ where
     }
 
     fn est_quantile_at_value(&mut self, item: f64) -> f64 {
-        if item <= self.min {
-            return 0.0;
-        } else if item >= self.max {
-            return 1.0;
-        }
-        let total_count = self.total_weight();
-        let mut current_quantile = 0.0;
-        for i in 0..self.centroids.len() {
-            if item < self.centroids[i].mean {
-                if i == 0 {
-                    let prev_centroid = Centroid {
-                        mean: self.min,
-                        weight: 1.0,
-                    };
-                    return self.interpolate_centroids_quantile(
-                        &prev_centroid,
-                        &self.centroids[i],
-                        item,
-                        prev_centroid.weight / (2.0 * total_count),
-                        total_count,
-                    );
+        // From https://github.com/tdunning/t-digest/blob/cba43e734ffe226efc7829b622459a6efb64e1e1/core/src/main/java/com/tdunning/math/stats/MergingDigest.java#L549
+        if self.centroids.len() == 0 {
+            return f64::NAN;
+        } else if self.centroids.len() == 1 {
+            let width = self.max - self.min;
+            return if item < self.min {
+                0.0
+            } else if item > self.max {
+                1.0
+            } else if item - self.min <= width {
+                0.5
+            } else {
+                (item - self.min) / width
+            };
+        } else {
+            if item < self.min {
+                return 0.0;
+            }
+            if item > self.max {
+                return 1.0;
+            }
+
+            let total_weight = self.total_weight();
+
+            let first = &self.centroids[0];
+            if item < first.mean {
+                if first.mean - self.min > 0.0 {
+                    if item == self.min {
+                        return 0.5 / total_weight;
+                    } else {
+                        return (1.0
+                            + (item - self.min) / (first.mean - self.min)
+                                * (first.weight / 2.0 - 1.0))
+                            / total_weight;
+                    }
                 } else {
-                    // item is between the previous and current centroid
-                    let prev_centroid = &self.centroids[i - 1];
-                    return self.interpolate_centroids_quantile(
-                        prev_centroid,
-                        &self.centroids[i],
-                        item,
-                        current_quantile,
-                        total_count,
-                    );
+                    return 0.0;
                 }
             }
-            current_quantile += self.centroids[i].weight / total_count;
+
+            let last = &self.centroids.last().unwrap();
+            if item > last.mean {
+                if self.max - last.mean > 0.0 {
+                    if item == self.max {
+                        return 1.0 - 0.5 / total_weight;
+                    } else {
+                        return 1.0
+                            - ((1.0
+                                + (self.max - item) / (self.max - last.mean)
+                                    * (last.weight / 2.0 - 1.0))
+                                / total_weight);
+                    }
+                } else {
+                    return 1.0;
+                }
+            }
+
+            let mut weight_so_far = 0.0;
+            for i in 0..self.centroids.len() - 1 {
+                if self.centroids[i].mean == item {
+                    let mut dw = 0.0;
+
+                    for j in i..self.centroids.len() {
+                        if self.centroids[j].mean != item {
+                            break;
+                        }
+                        dw += self.centroids[j].weight;
+                    }
+                    if self.centroids[i].weight == dw && dw == 1.0 {
+                        // The value matches a single singleton centroid. Therefore there is no weight to the left to split in half.
+                        return weight_so_far / total_weight;
+                    }
+                    return (weight_so_far + dw / 2.0) / total_weight;
+                } else if self.centroids[i].mean <= item && item < self.centroids[i + 1].mean {
+                    if self.centroids[i + 1].mean - self.centroids[i].mean > 0.0 {
+                        let mut left_excluded_weight = 0.0;
+                        let mut right_excluded_weight = 0.0;
+                        if self.centroids[i].weight == 1.0 {
+                            if self.centroids[i + 1].weight == 1.0 {
+                                return (weight_so_far + 1.0) / total_weight;
+                            } else {
+                                left_excluded_weight = 0.5;
+                            }
+                        } else if self.centroids[i + 1].weight == 1.0 {
+                            right_excluded_weight = 0.5;
+                        }
+
+                        let dw = (self.centroids[i].weight + self.centroids[i + 1].weight) / 2.0;
+
+                        // Don't currently assert as weight is not enforced to be greater than 1
+                        // assert!(dw > 1.0);
+                        // assert!(left_excluded_weight + right_excluded_weight <= 0.5);
+                        let left = self.centroids[i].mean;
+                        let right = self.centroids[i + 1].mean;
+                        let dw_no_singleton = dw - left_excluded_weight - right_excluded_weight;
+
+                        // assert!(dw_no_singleton > dw / 2.0);
+                        // assert!(right - left > 0.0);
+                        let base =
+                            weight_so_far + self.centroids[i].weight / 2.0 + left_excluded_weight;
+                        // println!(
+                        //     "le {} , re {}, dw {} base {} ratio {}",
+                        //     left_excluded_weight,
+                        //     right_excluded_weight,
+                        //     dw,
+                        //     base,
+                        //     (item - left) / (right - left)
+                        // );
+                        return (base + dw_no_singleton * (item - left) / (right - left))
+                            / total_weight;
+                    } else {
+                        let dw = (self.centroids[i].weight + self.centroids[i + 1].weight) / 2.0;
+                        return (weight_so_far + dw) / total_weight;
+                    }
+                } else {
+                    weight_so_far += self.centroids[i].weight;
+                }
+            }
+
+            if item == last.mean {
+                if last.weight == 1.0 {
+                    // Process as singleton
+                    return weight_so_far / total_weight;
+                }
+                return 1.0 - 0.5 / total_weight;
+            } else {
+                panic!("Illegal state, Fell through loop");
+            }
         }
-        // item is between the midpoint of the last centroid and the maximum value
-        let curr_centroid = Centroid {
-            mean: self.max,
-            weight: 1.0,
-        };
-        return self.interpolate_centroids_quantile(
-            &self.centroids[self.centroids.len() - 1],
-            &curr_centroid,
-            item,
-            current_quantile,
-            total_count,
-        );
     }
 
     fn est_value_at_quantile(&mut self, target_quantile: f64) -> f64 {
+        // From https://github.com/tdunning/t-digest/blob/cba43e734ffe226efc7829b622459a6efb64e1e1/core/src/main/java/com/tdunning/math/stats/MergingDigest.java#L687
         let total_weight = self.total_weight();
         let target_index = total_weight * target_quantile;
 
@@ -658,11 +741,12 @@ mod test {
         digest.add_buffer(&buffer);
         linear_digest.add_buffer(&buffer);
 
-        println!("{}", digest.centroids.len());
+        println!("{:?}", digest.centroids);
         assert_relative_eq!(
             digest.est_quantile_at_value(0.0),
             linear_digest.est_quantile_at_value(0.0)
         );
+        println!("{}", digest.est_quantile_at_value(1.0));
         assert_relative_eq!(
             digest.est_quantile_at_value(1.0) / linear_digest.est_quantile_at_value(1.0),
             1.0,
@@ -671,22 +755,22 @@ mod test {
         assert_relative_eq!(
             digest.est_quantile_at_value(10.0) / linear_digest.est_quantile_at_value(10.0),
             1.0,
-            epsilon = 0.005
+            epsilon = 0.001
         );
         assert_relative_eq!(
             digest.est_quantile_at_value(250.0) / linear_digest.est_quantile_at_value(250.0),
             1.0,
-            epsilon = 0.005
+            epsilon = 0.0005
         );
         assert_relative_eq!(
             digest.est_quantile_at_value(500.0) / linear_digest.est_quantile_at_value(500.0),
             1.0,
-            epsilon = 0.005
+            epsilon = 0.0005
         );
         assert_relative_eq!(
             digest.est_quantile_at_value(750.0) / linear_digest.est_quantile_at_value(750.0),
             1.0,
-            epsilon = 0.005
+            epsilon = 0.0005
         );
         assert_relative_eq!(
             digest.est_quantile_at_value(1000.0) / linear_digest.est_quantile_at_value(1000.0),
@@ -753,21 +837,43 @@ mod test {
 
     #[test]
     fn est_quantile_at_value() {
-        let buffer = (0..1001)
-            .map(|x| Centroid {
-                mean: -500.0 + x as f64,
-                weight: 1.0,
-            })
-            .collect();
+        let buffer: Vec<f64> = (0..1000).map(|x| -500.0 + x as f64).collect();
         let mut digest = TDigest::new(&k1, &inv_k1, 100.0);
-        digest.add_centroid_buffer(buffer);
+        digest.add_buffer(&buffer);
+
+        let mut linear_digest = LinearDigest::new();
+        linear_digest.add_buffer(&buffer);
 
         println!("{:?}", digest.centroids);
-        assert_relative_eq!(digest.est_quantile_at_value(-500.0), 0.0);
-        assert_relative_eq!(digest.est_quantile_at_value(-250.0), 0.25, epsilon = 0.001);
-        assert_relative_eq!(digest.est_quantile_at_value(0.0), 0.5, epsilon = 0.001);
-        assert_relative_eq!(digest.est_quantile_at_value(250.0), 0.75, epsilon = 0.001);
-        assert_relative_eq!(digest.est_quantile_at_value(500.0), 1.0);
+        println!("{:?}", &linear_digest.values[245..255]);
+        println!(
+            "{}, {}",
+            digest.est_quantile_at_value(-250.0),
+            linear_digest.est_quantile_at_value(-250.0)
+        );
+        assert_relative_eq!(
+            digest.est_quantile_at_value(-500.0),
+            linear_digest.est_quantile_at_value(-500.0),
+        );
+        assert_relative_eq!(
+            digest.est_quantile_at_value(-250.0) / linear_digest.est_quantile_at_value(-250.0),
+            1.0,
+            epsilon = 0.00025
+        );
+        assert_relative_eq!(
+            digest.est_quantile_at_value(0.0) / linear_digest.est_quantile_at_value(0.0),
+            1.0,
+            epsilon = 0.00001
+        );
+        assert_relative_eq!(
+            digest.est_quantile_at_value(250.0) / linear_digest.est_quantile_at_value(250.0),
+            1.0,
+            epsilon = 0.00001
+        );
+        assert_relative_eq!(
+            digest.est_quantile_at_value(500.0) / linear_digest.est_quantile_at_value(500.0),
+            1.0,
+        );
     }
 
     #[test]

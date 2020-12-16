@@ -23,75 +23,75 @@ impl KeyedSumNode {
         }
     }
 
-    pub fn less_than_sum(&self, target_key: f64) -> f64 {
-        match (
-            target_key.partial_cmp(&self.key).unwrap(),
-            &self.left_child,
-            &self.right_child,
-        ) {
-            (Less, None, _) => 0.0,
-            (Less, Some(left), _) => left.less_than_sum(target_key),
-            (Equal, None, _) => 0.0,
-            (Equal, Some(left), _) => left.less_than_sum(target_key),
-            (Greater, None, None) => self.weight,
-            (Greater, Some(left), None) => self.weight + left.sum,
-            (Greater, None, Some(right)) => self.weight + right.less_than_sum(target_key),
-            (Greater, Some(left), Some(right)) => {
-                self.weight + left.sum + right.less_than_sum(target_key)
-            }
-        }
-    }
+    // pub fn less_than_sum(&self, target_key: f64) -> f64 {
+    //     match (
+    //         target_key.partial_cmp(&self.key).unwrap(),
+    //         &self.left_child,
+    //         &self.right_child,
+    //     ) {
+    //         (Less, None, _) => 0.0,
+    //         (Less, Some(left), _) => left.less_than_sum(target_key),
+    //         (Equal, None, _) => 0.0,
+    //         (Equal, Some(left), _) => left.less_than_sum(target_key),
+    //         (Greater, None, None) => self.weight,
+    //         (Greater, Some(left), None) => self.weight + left.sum,
+    //         (Greater, None, Some(right)) => self.weight + right.less_than_sum(target_key),
+    //         (Greater, Some(left), Some(right)) => {
+    //             self.weight + left.sum + right.less_than_sum(target_key)
+    //         }
+    //     }
+    // }
 
-    pub fn insert(&mut self, insert_key: f64, weight: f64) {
-        if insert_key < self.key {
-            match &mut self.left_child {
-                None => self.left_child = Some(Box::new(KeyedSumNode::new(insert_key, weight))),
-                Some(child) => child.insert(insert_key, weight),
-            }
-        } else if self.key < insert_key {
-            match &mut self.right_child {
-                None => self.right_child = Some(Box::new(KeyedSumNode::new(insert_key, weight))),
-                Some(child) => child.insert(insert_key, weight),
-            }
-        } else {
-            panic!("KeyedSumNode is not designed to have identical key nodes");
-        }
-        self.sum += weight;
-    }
+    // pub fn insert(&mut self, insert_key: f64, weight: f64) {
+    //     if insert_key < self.key {
+    //         match &mut self.left_child {
+    //             None => self.left_child = Some(Box::new(KeyedSumNode::new(insert_key, weight))),
+    //             Some(child) => child.insert(insert_key, weight),
+    //         }
+    //     } else if self.key < insert_key {
+    //         match &mut self.right_child {
+    //             None => self.right_child = Some(Box::new(KeyedSumNode::new(insert_key, weight))),
+    //             Some(child) => child.insert(insert_key, weight),
+    //         }
+    //     } else {
+    //         panic!("KeyedSumNode is not designed to have identical key nodes");
+    //     }
+    //     self.sum += weight;
+    // }
 
-    pub fn update(&mut self, target_key: f64, new_weight: f64) -> Option<f64> {
-        return if target_key < self.key {
-            match &mut self.left_child {
-                None => None,
-                Some(child) => {
-                    let old_weight_option = child.update(target_key, new_weight);
-                    if let Some(old_weight) = old_weight_option {
-                        self.sum -= old_weight;
-                        self.sum += new_weight;
-                    }
-                    old_weight_option
-                }
-            }
-        } else if self.key < target_key {
-            match &mut self.right_child {
-                None => None,
-                Some(child) => {
-                    let old_weight_option = child.update(target_key, new_weight);
-                    if let Some(old_weight) = old_weight_option {
-                        self.sum -= old_weight;
-                        self.sum += new_weight;
-                    }
-                    old_weight_option
-                }
-            }
-        } else {
-            let old_weight_option = Some(self.weight);
-            self.sum -= self.weight;
-            self.sum += new_weight;
-            self.weight = new_weight;
-            old_weight_option
-        };
-    }
+    // pub fn update(&mut self, target_key: f64, new_weight: f64) -> Option<f64> {
+    //     return if target_key < self.key {
+    //         match &mut self.left_child {
+    //             None => None,
+    //             Some(child) => {
+    //                 let old_weight_option = child.update(target_key, new_weight);
+    //                 if let Some(old_weight) = old_weight_option {
+    //                     self.sum -= old_weight;
+    //                     self.sum += new_weight;
+    //                 }
+    //                 old_weight_option
+    //             }
+    //         }
+    //     } else if self.key < target_key {
+    //         match &mut self.right_child {
+    //             None => None,
+    //             Some(child) => {
+    //                 let old_weight_option = child.update(target_key, new_weight);
+    //                 if let Some(old_weight) = old_weight_option {
+    //                     self.sum -= old_weight;
+    //                     self.sum += new_weight;
+    //                 }
+    //                 old_weight_option
+    //             }
+    //         }
+    //     } else {
+    //         let old_weight_option = Some(self.weight);
+    //         self.sum -= self.weight;
+    //         self.sum += new_weight;
+    //         self.weight = new_weight;
+    //         old_weight_option
+    //     };
+    // }
 
     pub fn delete(mut self: Box<Self>, target_key: f64) -> Option<Box<KeyedSumNode>> {
         match target_key.partial_cmp(&self.key).unwrap() {
@@ -240,7 +240,6 @@ impl KeyedSumTree {
 
     pub fn less_than_sum(&self, key: f64) -> Option<f64> {
         if let Some(root) = &self.root {
-            // Some(root.less_than_sum(key))
             let mut current = root;
             let mut sum = 0.0;
             loop {
@@ -323,13 +322,13 @@ impl KeyedSumTree {
         self.size += 1;
     }
 
-    pub fn update(&mut self, key: f64, new_weight: f64) -> Option<f64> {
-        if let Some(root) = &mut self.root {
-            root.update(key, new_weight)
-        } else {
-            None
-        }
-    }
+    // pub fn update(&mut self, key: f64, new_weight: f64) -> Option<f64> {
+    //     if let Some(root) = &mut self.root {
+    //         root.update(key, new_weight)
+    //     } else {
+    //         None
+    //     }
+    // }
 
     pub fn delete(&mut self, target_key: f64) {
         if let Some(root) = self.root.take() {
