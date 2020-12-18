@@ -125,6 +125,43 @@ where
     }
 }
 
+/// Sample the error for a digest and test function compared to the generated datasets.
+/// # Arguments
+/// `create_digest` Function which takes a dataset and compression/accuracy parameter and returns a filled digest
+/// `gen_dataset` Function which generates a dataset for the digest
+/// `test_func` Function which takes a digest and performs the desired query, returning that value.
+/// `error_func` Function which takes the measured and actual errors as parameters and returns the error.
+/// `test_count` Number of tests to perform each iteration
+/// # Returns
+/// `return` Vector of errors compared to the generated datasets
+pub fn sample_digest_accuracy<D, C, G, T, E>(
+    create_digest: C,
+    gen_dataset: G,
+    test_func: T,
+    error_func: E,
+    test_count: u32,
+) -> Result<Vec<f64>, String>
+where
+    C: Fn(&[f64]) -> D,
+    G: Fn() -> Vec<f64>,
+    T: Fn(&mut dyn Digest) -> f64,
+    D: Digest,
+    E: Fn(f64, f64) -> f64,
+{
+    let mut results = Vec::new();
+    for _ in 0..test_count {
+        let dataset = gen_dataset();
+        let mut linear_digest = LinearDigest::new();
+        linear_digest.add_buffer(&dataset);
+        let mut digest = create_digest(&dataset);
+        results.push(error_func(
+            test_func(&mut digest),
+            test_func(&mut linear_digest),
+        ));
+    }
+    Ok(results)
+}
+
 // #[cfg(test)]
 // mod test {
 //     use approx::assert_relative_eq;
