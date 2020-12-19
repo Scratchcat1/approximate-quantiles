@@ -1,18 +1,20 @@
 use crate::t_digest::centroid::Centroid;
 use crate::t_digest::t_digest::TDigest;
 use crate::traits::Digest;
+use num_traits::Float;
 use rayon::prelude::*;
 
 #[derive(Clone)]
-pub struct ParTDigest<C, F, G>
+pub struct ParTDigest<C, F, G, T>
 where
-    F: Fn(f64, f64, f64) -> f64 + Sync,
-    G: Fn(f64, f64, f64) -> f64 + Sync,
-    C: Fn() -> TDigest<F, G> + Sync,
+    F: Fn(T, T, T) -> T + Sync,
+    G: Fn(T, T, T) -> T + Sync,
+    C: Fn() -> TDigest<F, G, T> + Sync,
+    T: Float + Send + Sync,
 {
-    pub digest: TDigest<F, G>,
+    pub digest: TDigest<F, G, T>,
     threads: usize,
-    pub buffer: Vec<f64>,
+    pub buffer: Vec<T>,
     capacity: usize,
     creator: C,
 }
@@ -23,13 +25,14 @@ where
 /// a new digest.
 /// The result of each of these digests is fed into the main digest.
 /// Buffer is flushed if an estimation is made.
-impl<C, F, G> ParTDigest<C, F, G>
+impl<C, F, G, T> ParTDigest<C, F, G, T>
 where
-    F: Fn(f64, f64, f64) -> f64 + Sync + Send,
-    G: Fn(f64, f64, f64) -> f64 + Sync + Send,
-    C: Fn() -> TDigest<F, G> + Sync,
+    F: Fn(T, T, T) -> T + Sync + Send,
+    G: Fn(T, T, T) -> T + Sync + Send,
+    C: Fn() -> TDigest<F, G, T> + Sync,
+    T: Float + Sync + Send,
 {
-    pub fn new(threads: usize, capacity: usize, creator: C) -> ParTDigest<C, F, G> {
+    pub fn new(threads: usize, capacity: usize, creator: C) -> ParTDigest<C, F, G, T> {
         ParTDigest {
             digest: creator(),
             threads,
@@ -41,7 +44,7 @@ where
 
     pub fn flush(&mut self) {
         if !self.buffer.is_empty() {
-            let digests: Vec<TDigest<F, G>> = self
+            let digests: Vec<TDigest<F, G, T>> = self
                 .buffer
                 .par_chunks(self.threads)
                 .map(|chunk| {
@@ -65,41 +68,42 @@ where
                     .into_iter()
                     .map(|digest| digest.centroids)
                     .flatten()
-                    .collect::<Vec<Centroid>>(),
+                    .collect::<Vec<Centroid<T>>>(),
             );
             self.buffer.clear();
         }
     }
 
-    pub fn total_weight(&self) -> f64 {
+    pub fn total_weight(&self) -> T {
         self.digest.total_weight()
     }
 }
 
-impl<C, F, G> Digest for ParTDigest<C, F, G>
+impl<C, F, G, T> Digest<T> for ParTDigest<C, F, G, T>
 where
-    F: Fn(f64, f64, f64) -> f64 + Sync + Send,
-    G: Fn(f64, f64, f64) -> f64 + Sync + Send,
-    C: Fn() -> TDigest<F, G> + Sync,
+    F: Fn(T, T, T) -> T + Sync + Send,
+    G: Fn(T, T, T) -> T + Sync + Send,
+    C: Fn() -> TDigest<F, G, T> + Sync,
+    T: Float + Send + Sync,
 {
-    fn add(&mut self, item: f64) {
+    fn add(&mut self, item: T) {
         self.buffer.push(item);
         if self.buffer.len() > self.capacity {
             self.flush();
         }
     }
-    fn add_buffer(&mut self, items: &[f64]) {
+    fn add_buffer(&mut self, items: &[T]) {
         self.buffer.extend(items);
         // self.buffer = items;
         if self.buffer.len() > self.capacity {
             self.flush();
         }
     }
-    fn est_quantile_at_value(&mut self, value: f64) -> f64 {
+    fn est_quantile_at_value(&mut self, value: T) -> T {
         self.flush();
         self.digest.est_quantile_at_value(value)
     }
-    fn est_value_at_quantile(&mut self, quantile: f64) -> f64 {
+    fn est_value_at_quantile(&mut self, quantile: T) -> T {
         self.flush();
         self.digest.est_value_at_quantile(quantile)
     }

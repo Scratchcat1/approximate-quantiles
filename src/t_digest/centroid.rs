@@ -1,21 +1,33 @@
+use num_traits::Float;
 use std::ops::Add;
 
 /// Weighted value used in `TDigest`
 #[derive(Clone, Debug, PartialEq)]
-pub struct Centroid {
+pub struct Centroid<F>
+where
+    F: Float,
+{
     /// Mean of the centroid
-    pub mean: f64,
+    pub mean: F,
     /// Weight of the centroid
-    pub weight: f64,
+    pub weight: F,
 }
 
-impl Centroid {
-    pub fn new(mean: f64, weight: f64) -> Self {
+// unsafe impl<F> Send for Centroid<F> where F: Float {}
+
+impl<F> Centroid<F>
+where
+    F: Float,
+{
+    pub fn new(mean: F, weight: F) -> Self {
         Self { mean, weight }
     }
 }
 
-impl Add for Centroid {
+impl<F> Add for Centroid<F>
+where
+    F: Float,
+{
     type Output = Self;
 
     fn add(self, other: Self) -> Self {
@@ -27,10 +39,13 @@ impl Add for Centroid {
     }
 }
 
-impl Add for &Centroid {
-    type Output = Centroid;
+impl<F> Add for &Centroid<F>
+where
+    F: Float,
+{
+    type Output = Centroid<F>;
 
-    fn add(self, other: &Centroid) -> Centroid {
+    fn add(self, other: &Centroid<F>) -> Centroid<F> {
         let new_weight = self.weight + other.weight;
         Centroid {
             mean: ((self.mean * self.weight) + (other.mean * other.weight)) / new_weight,

@@ -1,10 +1,14 @@
 use crate::traits::Digest;
+use num_traits::{cast::ToPrimitive, Float};
 use std::cmp::Ordering;
 
 #[derive(Debug, Clone)]
-pub struct RCSketch {
+pub struct RCSketch<F>
+where
+    F: Float,
+{
     /// Vector of relative compactors
-    pub buffers: Vec<Vec<f64>>,
+    pub buffers: Vec<Vec<F>>,
     /// Upper bound on the number of inputs expected
     pub input_length: usize,
     /// Parameter controlling error and buffer size
@@ -17,14 +21,17 @@ pub struct RCSketch {
     pub compaction_counters: Vec<u32>,
 }
 
-impl Digest for RCSketch {
-    fn add(&mut self, item: f64) {
+impl<F> Digest<F> for RCSketch<F>
+where
+    F: Float + ToPrimitive,
+{
+    fn add(&mut self, item: F) {
         // Insert into the bottom buffer
         self.insert_at_rc(item, 0, false);
         self.count += 1;
     }
 
-    fn add_buffer(&mut self, items: &[f64]) {
+    fn add_buffer(&mut self, items: &[F]) {
         let length = items.len() as u64;
         // Insert into the bottom buffer
         items
@@ -33,11 +40,11 @@ impl Digest for RCSketch {
         self.count += length;
     }
 
-    fn est_quantile_at_value(&mut self, rank_item: f64) -> f64 {
-        self.interpolate_rank(rank_item) as f64 / self.count as f64
+    fn est_quantile_at_value(&mut self, rank_item: F) -> F {
+        F::from(self.interpolate_rank(rank_item)).unwrap() / F::from(self.count).unwrap()
     }
 
-    fn est_value_at_quantile(&mut self, target_quantile: f64) -> f64 {
+    fn est_value_at_quantile(&mut self, target_quantile: F) -> F {
         let mut start = *self
             .buffers
             .iter()
@@ -60,9 +67,9 @@ impl Digest for RCSketch {
             })
             .max_by(|a, b| a.partial_cmp(b).unwrap())
             .unwrap();
-        let mut mid = (start + end) / 2.0;
-        while (end - start).abs() > 0.00001 {
-            mid = (start + end) / 2.0;
+        let mut mid = (start + end) / F::from(2.0).unwrap();
+        while (end - start).abs() > F::from(0.00001).unwrap() {
+            mid = (start + end) / F::from(2.0).unwrap();
             let current_quantile = self.est_quantile_at_value(mid);
 
             match current_quantile.partial_cmp(&target_quantile).unwrap() {
@@ -75,12 +82,15 @@ impl Digest for RCSketch {
     }
 }
 
-impl RCSketch {
+impl<F> RCSketch<F>
+where
+    F: Float + ToPrimitive,
+{
     /// Create a new `RCSketch`
     /// # Arguments
     /// * `input_length` Upper bound on the number of inputs expected.
     /// * `k` Parameter controlling error and buffer size
-    pub fn new(input_length: usize, k: usize) -> RCSketch {
+    pub fn new(input_length: usize, k: usize) -> RCSketch<F> {
         RCSketch {
             buffers: Vec::new(),
             input_length,
@@ -93,7 +103,11 @@ impl RCSketch {
 
     pub fn calc_buffer_size(input_length: usize, k: usize) -> usize {
         return usize::max(
-            (2.0 * k as f64 * ((input_length / k) as f64).log2()) as usize,
+            (F::from(2.0).unwrap()
+                * F::from(k).unwrap()
+                * F::from(input_length / k).unwrap().log2())
+            .to_usize()
+            .unwrap(),
             2 * k,
         );
     }
@@ -119,7 +133,7 @@ impl RCSketch {
         return self.buffer_size / 2;
     }
 
-    pub fn add_buffer_fast(&mut self, items: &[f64]) {
+    pub fn add_buffer_fast(&mut self, items: &[F]) {
         let length = items.len() as u64;
         // Insert into the bottom buffer
         items
@@ -133,7 +147,7 @@ impl RCSketch {
     /// * `item` The item to insert
     /// * `rc_index` The index of the buffer to insert at
     /// * `fast_compaction` Enables faster compaction in exchange for potentially increased error
-    pub fn insert_at_rc(&mut self, item: f64, rc_index: usize, fast_compaction: bool) {
+    pub fn insert_at_rc(&mut self, item: F, rc_index: usize, fast_compaction: bool) {
         // Create a new buffer if required
         if self.buffers.len() <= rc_index {
             self.buffers.push(Vec::with_capacity(self.buffer_size));
@@ -157,7 +171,7 @@ impl RCSketch {
     /// * `items` The items to insert
     /// * `rc_index` The index of the buffer to insert at
     /// * `fast_compaction` Enables faster compaction in exchange for potentially increased error
-    pub fn insert_at_rc_batch(&mut self, items: &[f64], rc_index: usize, fast_compaction: bool) {
+    pub fn insert_at_rc_batch(&mut self, items: &[F], rc_index: usize, fast_compaction: bool) {
         // Create a new buffer if required
         if self.buffers.len() <= rc_index {
             self.buffers.push(Vec::with_capacity(self.buffer_size));
@@ -181,7 +195,7 @@ impl RCSketch {
     /// # Arguments
     /// * `rc_index` Index of the buffer to compact
     /// * `compact_index` Index after which to compact
-    pub fn compact(&mut self, rc_index: usize, compact_index: usize) -> Vec<f64> {
+    pub fn compact(&mut self, rc_index: usize, compact_index: usize) -> Vec<F> {
         // Sort and extract the largest values
         self.buffers[rc_index].sort_by(|a, b| a.partial_cmp(&b).unwrap());
         let upper = self.buffers[rc_index].split_off(compact_index);
@@ -197,7 +211,7 @@ impl RCSketch {
     /// Estimate the rank of an item in the input set of the sketch
     /// # Arguments
     /// * `rank_item` Item to estimate the rank of
-    pub fn interpolate_rank(&self, rank_item: f64) -> u64 {
+    pub fn interpolate_rank(&self, rank_item: F) -> u64 {
         let mut rank = 0;
         for i in 0..self.buffers.len() {
             rank += self.buffers[i].iter().filter(|x| **x <= rank_item).count() as u64 * (1 << i);
