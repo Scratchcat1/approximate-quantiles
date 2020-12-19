@@ -107,7 +107,7 @@ where
                 * F::from(k).unwrap()
                 * F::from(input_length / k).unwrap().log2())
             .to_usize()
-            .unwrap(),
+            .unwrap_or(0),
             2 * k,
         );
     }

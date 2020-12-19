@@ -1,44 +1,80 @@
+use num_traits::Float;
 use std::f64::consts::PI;
 
-pub fn k0(quantile: f64, comp_factor: f64, _: f64) -> f64 {
-    (quantile * comp_factor) / 2.0
+pub fn k0<F>(quantile: F, comp_factor: F, _: F) -> F
+where
+    F: Float,
+{
+    (quantile * comp_factor) / F::from(2.0).unwrap()
 }
 
-pub fn inv_k0(scale: f64, comp_factor: f64, _: f64) -> f64 {
-    (scale * 2.0) / comp_factor
+pub fn inv_k0<F>(scale: F, comp_factor: F, _: F) -> F
+where
+    F: Float,
+{
+    (scale * F::from(2.0).unwrap()) / comp_factor
 }
 
-pub fn k1(quantile: f64, comp_factor: f64, _: f64) -> f64 {
-    (comp_factor / (2.0 * PI)) * (2.0 * quantile - 1.0).asin()
+pub fn k1<F>(quantile: F, comp_factor: F, _: F) -> F
+where
+    F: Float,
+{
+    (comp_factor / (F::from(2.0).unwrap() * F::from(PI).unwrap()))
+        * (F::from(2.0).unwrap() * quantile - F::from(1.0).unwrap()).asin()
 }
 
-pub fn inv_k1(scale: f64, comp_factor: f64, _: f64) -> f64 {
-    (1.0 + (2.0 * PI * scale / comp_factor).sin()) / 2.0
+pub fn inv_k1<F>(scale: F, comp_factor: F, _: F) -> F
+where
+    F: Float,
+{
+    (F::from(1.0).unwrap()
+        + (F::from(2.0).unwrap() * F::from(PI).unwrap() * scale / comp_factor).sin())
+        / F::from(2.0).unwrap()
 }
 
-pub fn k2(quantile: f64, comp_factor: f64, n: f64) -> f64 {
-    (comp_factor / (4.0 * (n / comp_factor).log10() + 24.0)) * (quantile / (1.0 - quantile)).log10()
+pub fn k2<F>(quantile: F, comp_factor: F, n: F) -> F
+where
+    F: Float,
+{
+    (comp_factor / (F::from(4.0).unwrap() * (n / comp_factor).log10() + F::from(24.0).unwrap()))
+        * (quantile / (F::from(1.0).unwrap() - quantile)).log10()
 }
 
-pub fn inv_k2(scale: f64, comp_factor: f64, n: f64) -> f64 {
-    let x = (10.0 as f64).powf((scale * (4.0 * (n / comp_factor).log10() + 24.0)) / comp_factor);
-    return x / (1.0 + x);
+pub fn inv_k2<F>(scale: F, comp_factor: F, n: F) -> F
+where
+    F: Float,
+{
+    let x = F::from(10.0).unwrap().powf(
+        (scale * (F::from(4.0).unwrap() * (n / comp_factor).log10() + F::from(24.0).unwrap()))
+            / comp_factor,
+    );
+    return x / (F::from(1.0).unwrap() + x);
 }
 
-pub fn k3(quantile: f64, comp_factor: f64, n: f64) -> f64 {
-    let factor = match quantile <= 0.5 {
-        true => (2.0 * quantile).log10(),
-        false => -(2.0 * (1.0 - quantile)).log10(),
+pub fn k3<F>(quantile: F, comp_factor: F, n: F) -> F
+where
+    F: Float,
+{
+    let factor = match quantile <= F::from(0.5).unwrap() {
+        true => (F::from(2.0).unwrap() * quantile).log10(),
+        false => -(F::from(2.0).unwrap() * (F::from(1.0).unwrap() - quantile)).log10(),
     };
-    (comp_factor / (4.0 * (n / comp_factor).log10() + 21.0)) * factor
+    (comp_factor / (F::from(4.0).unwrap() * (n / comp_factor).log10() + F::from(21.0).unwrap()))
+        * factor
 }
 
-pub fn inv_k3(scale: f64, comp_factor: f64, n: f64) -> f64 {
-    let pow = (scale * (4.0 * (n / comp_factor).log10() + 21.0)) / comp_factor;
+pub fn inv_k3<F>(scale: F, comp_factor: F, n: F) -> F
+where
+    F: Float,
+{
+    let pow = (scale
+        * (F::from(4.0).unwrap() * (n / comp_factor).log10() + F::from(21.0).unwrap()))
+        / comp_factor;
 
-    let q_low = (10.0 as f64).powf(pow) / 2.0;
-    let q_high = (2.0 - (10.0 as f64).powf(-pow)) / 2.0;
-    match (0.5 - q_low).abs() > (0.5 - q_high).abs() {
+    let q_low = F::from(10.0).unwrap().powf(pow) / F::from(2.0).unwrap();
+    let q_high =
+        (F::from(2.0).unwrap() - F::from(10.0).unwrap().powf(-pow)) / F::from(2.0).unwrap();
+    match (F::from(0.5).unwrap() - q_low).abs() > (F::from(0.5).unwrap() - q_high).abs() {
         true => q_high,
         false => q_low,
     }

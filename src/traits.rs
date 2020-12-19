@@ -1,4 +1,4 @@
-use num_traits::{cast::FromPrimitive, Float};
+use num_traits::Float;
 
 pub trait Digest<F>
 where

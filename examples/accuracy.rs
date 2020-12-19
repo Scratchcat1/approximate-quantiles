@@ -5,29 +5,39 @@ use approximate_quantiles::util::linear_digest::LinearDigest;
 use approximate_quantiles::util::{
     gen_uniform_vec, opt_accuracy_parameter, sample_digest_accuracy,
 };
+use num_traits::Float;
 use plotters::prelude::*;
 use std::error::Error;
 use std::path::Path;
 
-pub struct Line {
+pub struct Line<T>
+where
+    T: Float,
+{
     name: String,
-    datapoints: Vec<(f64, Vec<f64>)>,
+    datapoints: Vec<(T, Vec<T>)>,
 }
 
-pub struct DataStat {
-    x: f64,
-    y_mean: f64,
-    y_min: f64,
-    y_max: f64,
+pub struct DataStat<T>
+where
+    T: Float,
+{
+    x: T,
+    y_mean: T,
+    y_min: T,
+    y_max: T,
 }
 
-pub fn plot_line_graph(
+pub fn plot_line_graph<T>(
     title: &str,
-    series: Vec<Line>,
+    series: Vec<Line<T>>,
     output_path: &Path,
     x_label: &str,
     y_label: &str,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), Box<dyn Error>>
+where
+    T: Float,
+{
     let root = BitMapBackend::new(output_path, (1024, 768)).into_drawing_area();
 
     root.fill(&WHITE)?;
@@ -86,7 +96,7 @@ pub fn plot_line_graph(
         .max_by(|a, b| a.partial_cmp(&b).unwrap())
         .unwrap();
 
-    println!("{} {} {} {}", min_x, max_x, min_y, max_y);
+    // println!("{} {} {} {}", min_x, max_x, min_y, max_y);
     let mut chart = ChartBuilder::on(&root)
         .margin(10)
         .margin_right(30)
@@ -95,8 +105,8 @@ pub fn plot_line_graph(
         // .set_label_area_size(LabelAreaPosition::Right, 60)
         .set_label_area_size(LabelAreaPosition::Bottom, 40)
         .build_cartesian_2d(
-            (min_x..max_x).log_scale(),
-            (min_y + 1e-4..max_y * 1e6).log_scale(),
+            (min_x.to_f64().unwrap()..max_x.to_f64().unwrap()).log_scale(),
+            (min_y.to_f64().unwrap() + 1e-4..max_y.to_f64().unwrap() * 1e6).log_scale(),
         )?;
 
     chart
@@ -110,12 +120,14 @@ pub fn plot_line_graph(
 
     println!("Drawing series");
     series.iter().for_each(|s| {
-        let data_stats: Vec<DataStat> = s
+        let data_stats: Vec<DataStat<T>> = s
             .datapoints
             .iter()
             .map(|outputs| DataStat {
                 x: outputs.0,
-                y_mean: outputs.1.iter().sum::<f64>() / outputs.1.len() as f64,
+                y_mean: T::from(outputs.1.iter().map(|x| x.to_f64().unwrap()).sum::<f64>())
+                    .unwrap()
+                    / T::from(outputs.1.len()).unwrap(),
                 y_min: *outputs
                     .1
                     .iter()
@@ -131,9 +143,12 @@ pub fn plot_line_graph(
 
         chart
             .draw_series(LineSeries::new(
-                data_stats
-                    .iter()
-                    .map(|data_stat| (data_stat.x, data_stat.y_mean * 1e6)),
+                data_stats.iter().map(|data_stat| {
+                    (
+                        data_stat.x.to_f64().unwrap(),
+                        data_stat.y_mean.to_f64().unwrap() * 1e6,
+                    )
+                }),
                 &BLUE,
             ))
             .expect("Failed to draw mean series")
@@ -144,8 +159,14 @@ pub fn plot_line_graph(
             .draw_series(data_stats.iter().map(|data_stat| {
                 PathElement::new(
                     vec![
-                        (data_stat.x, data_stat.y_max * 1e6),
-                        (data_stat.x, data_stat.y_min * 1e6),
+                        (
+                            data_stat.x.to_f64().unwrap(),
+                            data_stat.y_max.to_f64().unwrap() * 1e6,
+                        ),
+                        (
+                            data_stat.x.to_f64().unwrap(),
+                            data_stat.y_min.to_f64().unwrap() * 1e6,
+                        ),
                     ],
                     &BLUE,
                 )
@@ -163,33 +184,36 @@ pub fn plot_line_graph(
     Ok(())
 }
 
-fn determine_required_parameter() {
-    let test_func = |digest: &mut dyn Digest, linear_digest: &mut LinearDigest| {
+fn determine_required_parameter<T>()
+where
+    T: Float + Send + Sync,
+{
+    let test_func = |digest: &mut dyn Digest<T>, linear_digest: &mut LinearDigest<T>| {
         absolute_error(
-            digest.est_quantile_at_value(1.0),
-            linear_digest.est_quantile_at_value(1.0),
-        ) < 1e-4
+            digest.est_quantile_at_value(T::from(1.0).unwrap()),
+            linear_digest.est_quantile_at_value(T::from(1.0).unwrap()),
+        ) < T::from(1e-4).unwrap()
             && absolute_error(
-                digest.est_quantile_at_value(10.0),
-                linear_digest.est_quantile_at_value(10.0),
-            ) < 1e-3
+                digest.est_quantile_at_value(T::from(10.0).unwrap()),
+                linear_digest.est_quantile_at_value(T::from(10.0).unwrap()),
+            ) < T::from(1e-3).unwrap()
             && absolute_error(
-                digest.est_quantile_at_value(100.0),
-                linear_digest.est_quantile_at_value(100.0),
-            ) < 1e-2
+                digest.est_quantile_at_value(T::from(100.0).unwrap()),
+                linear_digest.est_quantile_at_value(T::from(100.0).unwrap()),
+            ) < T::from(1e-2).unwrap()
             && absolute_error(
-                digest.est_quantile_at_value(250.0),
-                linear_digest.est_quantile_at_value(250.0),
-            ) < 1e-1
+                digest.est_quantile_at_value(T::from(250.0).unwrap()),
+                linear_digest.est_quantile_at_value(T::from(250.0).unwrap()),
+            ) < T::from(1e-1).unwrap()
     };
 
-    let create_rcsketch = |dataset: &[f64], param: f64| {
-        let mut digest = RCSketch::new(dataset.len(), param as usize);
+    let create_rcsketch = |dataset: &[T], param: T| {
+        let mut digest = RCSketch::new(dataset.len(), param.to_usize().unwrap());
         digest.add_buffer(dataset);
         digest
     };
 
-    let create_t_digest = |dataset: &[f64], param: f64| {
+    let create_t_digest = |dataset: &[T], param: T| {
         let mut digest = TDigest::new(&scale_functions::k2, &scale_functions::inv_k2, param);
         digest.add_buffer(dataset);
         digest
@@ -201,12 +225,13 @@ fn determine_required_parameter() {
         test_func,
         100,
         0.9,
-        1_000.0,
-        2.0,
-    );
+        T::from(1_000.0).unwrap(),
+        T::from(2.0).unwrap(),
+    )
+    .expect("Failed to find solution for compression parameter");
     println!(
         "Required compression parameter for RCSketch was {}",
-        opt_rc_sketch_param.expect("Failed to find solution for compression parameter")
+        opt_rc_sketch_param.to_f64().unwrap()
     );
 
     let opt_t_digest_param = opt_accuracy_parameter(
@@ -215,27 +240,32 @@ fn determine_required_parameter() {
         test_func,
         100,
         0.9,
-        10_000.0,
-        2.0,
-    );
+        T::from(10_000.0).unwrap(),
+        T::from(2.0).unwrap(),
+    )
+    .expect("Failed to find solution for compression parameter");
     println!(
         "Required compression parameter for T Digest was {}",
-        opt_t_digest_param.expect("Failed to find solution for compression parameter")
+        opt_t_digest_param.to_f64().unwrap()
     );
 }
-fn accuracy_against_space_usage() {
-    let test_func = |value: f64| move |digest: &mut dyn Digest| digest.est_quantile_at_value(value);
+fn accuracy_against_space_usage<T>()
+where
+    T: Float + Send + Sync,
+{
+    let test_func =
+        |value: T| move |digest: &mut dyn Digest<T>| digest.est_quantile_at_value(value);
 
-    let create_rcsketch = |accuracy_param: f64| {
-        move |dataset: &[f64]| {
-            let mut digest = RCSketch::new(dataset.len(), accuracy_param as usize);
+    let create_rcsketch = |accuracy_param: T| {
+        move |dataset: &[T]| {
+            let mut digest = RCSketch::new(dataset.len(), accuracy_param.to_usize().unwrap());
             digest.add_buffer(dataset);
             digest
         }
     };
 
-    let create_t_digest = |compression_param: f64| {
-        move |dataset: &[f64]| {
+    let create_t_digest = |compression_param: T| {
+        move |dataset: &[T]| {
             let mut digest = TDigest::new(
                 &scale_functions::k2,
                 &scale_functions::inv_k2,
@@ -251,14 +281,14 @@ fn accuracy_against_space_usage() {
     let mut s = Vec::new();
     for i in &[10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0] {
         let accuracy_measurements = sample_digest_accuracy(
-            create_rcsketch(50.0),
+            create_rcsketch(T::from(50.0).unwrap()),
             || gen_uniform_vec(100_000),
-            test_func(*i),
+            test_func(T::from(*i).unwrap()),
             absolute_error,
             100,
         )
         .unwrap();
-        s.push((*i, accuracy_measurements));
+        s.push((T::from(*i).unwrap(), accuracy_measurements));
     }
 
     series.push(Line {
@@ -269,14 +299,14 @@ fn accuracy_against_space_usage() {
     let mut s = Vec::new();
     for i in &[10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0] {
         let accuracy_measurements = sample_digest_accuracy(
-            create_t_digest(100.0),
+            create_t_digest(T::from(100.0).unwrap()),
             || gen_uniform_vec(100_000),
-            test_func(*i),
+            test_func(T::from(*i).unwrap()),
             absolute_error,
             100,
         )
         .unwrap();
-        s.push((*i, accuracy_measurements));
+        s.push((T::from(*i).unwrap(), accuracy_measurements));
     }
 
     series.push(Line {
@@ -294,14 +324,17 @@ fn accuracy_against_space_usage() {
     .unwrap();
 }
 
-fn absolute_error(measured: f64, actual: f64) -> f64 {
+fn absolute_error<T>(measured: T, actual: T) -> T
+where
+    T: Float,
+{
     // println!("{} {}", measured, actual);
     (measured - actual).abs()
 }
 
 fn main() {
-    accuracy_against_space_usage();
-    determine_required_parameter();
+    accuracy_against_space_usage::<f64>();
+    determine_required_parameter::<f64>();
     // plot_line_graph(
     //     "bla",
     //     vec![
