@@ -1,7 +1,7 @@
 use crate::t_digest::centroid::Centroid;
 use crate::t_digest::t_digest::TDigest;
 use crate::traits::Digest;
-use num_traits::Float;
+use num_traits::{Float, NumAssignOps};
 use rayon::prelude::*;
 
 #[derive(Clone)]
@@ -10,7 +10,7 @@ where
     F: Fn(T, T, T) -> T + Sync,
     G: Fn(T, T, T) -> T + Sync,
     C: Fn() -> TDigest<F, G, T> + Sync,
-    T: Float + Send + Sync,
+    T: Float + Send + Sync + NumAssignOps,
 {
     pub digest: TDigest<F, G, T>,
     threads: usize,
@@ -30,7 +30,7 @@ where
     F: Fn(T, T, T) -> T + Sync + Send,
     G: Fn(T, T, T) -> T + Sync + Send,
     C: Fn() -> TDigest<F, G, T> + Sync,
-    T: Float + Sync + Send,
+    T: Float + Sync + Send + NumAssignOps,
 {
     pub fn new(threads: usize, capacity: usize, creator: C) -> ParTDigest<C, F, G, T> {
         ParTDigest {
@@ -84,7 +84,7 @@ where
     F: Fn(T, T, T) -> T + Sync + Send,
     G: Fn(T, T, T) -> T + Sync + Send,
     C: Fn() -> TDigest<F, G, T> + Sync,
-    T: Float + Send + Sync,
+    T: Float + Send + Sync + NumAssignOps,
 {
     fn add(&mut self, item: T) {
         self.buffer.push(item);

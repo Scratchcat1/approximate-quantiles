@@ -1,7 +1,7 @@
 // use std::cell::RefCell;
 // use std::rc::Rc;
 use crate::t_digest::centroid::Centroid;
-use num_traits::Float;
+use num_traits::{Float, NumAssignOps};
 use std::cmp::Ordering::{Equal, Greater, Less};
 
 #[derive(Debug)]
@@ -160,7 +160,7 @@ where
 // https://stackoverflow.com/questions/64043682/how-to-write-a-delete-function-for-a-binary-tree-in-rust
 impl<F> KeyedSumTree<F>
 where
-    F: Float,
+    F: Float + NumAssignOps,
 {
     // pub fn find(&self, target_key: F) -> &Option<Box<KeyedSumNode>> {
     //     let mut current = &self.root;
@@ -196,19 +196,19 @@ where
                     (Equal, None, _) => break,
                     (Equal, Some(left), _) => current = left,
                     (Greater, None, None) => {
-                        sum = sum + current.weight;
+                        sum += current.weight;
                         break;
                     }
                     (Greater, Some(left), None) => {
-                        sum = sum + current.weight + left.sum;
+                        sum += current.weight + left.sum;
                         break;
                     }
                     (Greater, None, Some(right)) => {
-                        sum = sum + current.weight;
+                        sum += current.weight;
                         current = right;
                     }
                     (Greater, Some(left), Some(right)) => {
-                        sum = sum + current.weight + left.sum;
+                        sum += current.weight + left.sum;
                         current = right;
                     }
                 };
@@ -322,7 +322,7 @@ where
 
 impl<F> From<&[Centroid<F>]> for KeyedSumTree<F>
 where
-    F: Float,
+    F: Float + NumAssignOps,
 {
     fn from(slice: &[Centroid<F>]) -> Self {
         let mut tree = KeyedSumTree::new();

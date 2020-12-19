@@ -5,7 +5,7 @@ use approximate_quantiles::util::linear_digest::LinearDigest;
 use approximate_quantiles::util::{
     gen_uniform_vec, opt_accuracy_parameter, sample_digest_accuracy,
 };
-use num_traits::Float;
+use num_traits::{Float, NumAssignOps};
 use plotters::prelude::*;
 use std::error::Error;
 use std::path::Path;
@@ -186,7 +186,7 @@ where
 
 fn determine_required_parameter<T>()
 where
-    T: Float + Send + Sync,
+    T: Float + Send + Sync + NumAssignOps,
 {
     let test_func = |digest: &mut dyn Digest<T>, linear_digest: &mut LinearDigest<T>| {
         absolute_error(
@@ -251,7 +251,7 @@ where
 }
 fn accuracy_against_space_usage<T>()
 where
-    T: Float + Send + Sync,
+    T: Float + Send + Sync + NumAssignOps,
 {
     let test_func =
         |value: T| move |digest: &mut dyn Digest<T>| digest.est_quantile_at_value(value);

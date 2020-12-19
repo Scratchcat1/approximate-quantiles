@@ -3,7 +3,7 @@ use crate::t_digest::centroid::Centroid;
 use crate::traits::Digest;
 use crate::util::keyed_sum_tree::KeyedSumTree;
 use crate::util::weighted_average;
-use num_traits::{cast::ToPrimitive, Float};
+use num_traits::{cast::ToPrimitive, Float, NumAssignOps};
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use rayon::prelude::*;
@@ -33,7 +33,7 @@ impl<F, G, T> Digest<T> for TDigest<F, G, T>
 where
     F: Fn(T, T, T) -> T,
     G: Fn(T, T, T) -> T,
-    T: Float + ToPrimitive + Send + Sync,
+    T: Float + ToPrimitive + Send + Sync + NumAssignOps,
 {
     fn add(&mut self, item: T) {
         self.add_centroid_buffer(vec![Centroid {
@@ -122,7 +122,7 @@ where
                         if self.centroids[j].mean != item {
                             break;
                         }
-                        dw = dw + self.centroids[j].weight;
+                        dw += self.centroids[j].weight;
                     }
                     if self.centroids[i].weight == dw && dw == T::from(1.0).unwrap() {
                         // The value matches a single singleton centroid. Therefore there is no weight to the left to split in half.
@@ -174,7 +174,7 @@ where
                         return (weight_so_far + dw) / total_weight;
                     }
                 } else {
-                    weight_so_far = weight_so_far + self.centroids[i].weight;
+                    weight_so_far += self.centroids[i].weight;
                 }
             }
 
@@ -259,7 +259,7 @@ impl<F, G, T> TDigest<F, G, T>
 where
     F: Fn(T, T, T) -> T,
     G: Fn(T, T, T) -> T,
-    T: Float + ToPrimitive + Send + Sync,
+    T: Float + ToPrimitive + Send + Sync + NumAssignOps,
 {
     /// Returns a new `TDigest`
     /// # Arguments
@@ -381,14 +381,14 @@ where
                         Some(index) => {
                             // Merge the current centroid with the centroid in the digest
                             let mut merge = &mut self.centroids[index];
-                            total_weight = total_weight + x.weight;
+                            total_weight += x.weight;
                             merge.mean = (merge.mean * merge.weight + x.mean * x.weight)
                                 / (merge.weight + x.weight);
-                            merge.weight = merge.weight + x.weight;
+                            merge.weight += x.weight;
                         }
                         None => {
                             // No suitable centroid in the digest was found, insert the current centroid into the digest
-                            total_weight = total_weight + x.weight;
+                            total_weight += x.weight;
                             match self
                                 .centroids
                                 .binary_search_by(|probe| probe.mean.partial_cmp(&x.mean).unwrap())
@@ -401,7 +401,7 @@ where
                 }
                 None => {
                     // No suitable centroid in the digest was found, insert the current centroid into the digest
-                    total_weight = total_weight + x.weight;
+                    total_weight += x.weight;
                     match self
                         .centroids
                         .binary_search_by(|probe| probe.mean.partial_cmp(&x.mean).unwrap())
@@ -468,7 +468,7 @@ where
                     match closest_acceptable_centroid {
                         Some(closest_centroid) => {
                             // Merge the current centroid with the centroid in the digest
-                            total_weight = total_weight + x.weight;
+                            total_weight += x.weight;
                             k_size_tree.delete(closest_centroid.mean);
 
                             let mean = (closest_centroid.mean * closest_centroid.weight
@@ -480,14 +480,14 @@ where
                         None => {
                             // No suitable centroid in the digest was found, insert the current centroid into the digest
                             k_size_tree.insert(x.mean, x.weight);
-                            total_weight = total_weight + x.weight;
+                            total_weight += x.weight;
                         }
                     }
                 }
                 true => {
                     // No suitable centroid in the digest was found, insert the current centroid into the digest
                     k_size_tree.insert(x.mean, x.weight);
-                    total_weight = total_weight + x.weight;
+                    total_weight += x.weight;
                 }
             }
 
@@ -877,7 +877,7 @@ mod test {
 
     #[test]
     fn est_quantile_at_value() {
-        let buffer: Vec<f64> = (0..1000).map(|x| -500.0 + x as f64).collect();
+        let buffer: Vec<f32> = (0..1000).map(|x| -500.0 + x as f32).collect();
         let mut digest = TDigest::new(&k1, &inv_k1, 100.0);
         digest.add_buffer(&buffer);
 
