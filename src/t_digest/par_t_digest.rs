@@ -1,6 +1,6 @@
 use crate::t_digest::centroid::Centroid;
 use crate::t_digest::t_digest::TDigest;
-use crate::traits::Digest;
+use crate::traits::{Digest, OwnedSize};
 use num_traits::{Float, NumAssignOps};
 use rayon::prelude::*;
 
@@ -17,6 +17,20 @@ where
     pub buffer: Vec<T>,
     capacity: usize,
     creator: C,
+}
+
+impl<C, F, G, T> OwnedSize for ParTDigest<C, F, G, T>
+where
+    F: Fn(T, T, T) -> T + Sync + Send,
+    G: Fn(T, T, T) -> T + Sync + Send,
+    C: Fn() -> TDigest<F, G, T> + Sync + OwnedSize,
+    T: Float + Sync + Send + NumAssignOps,
+{
+    fn owned_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+            + std::mem::size_of::<T>() * self.buffer.capacity()
+            + (self.digest.owned_size() - std::mem::size_of::<TDigest<F, G, T>>())
+    }
 }
 
 /// Digest with internal buffer and parallel merging of that buffer.

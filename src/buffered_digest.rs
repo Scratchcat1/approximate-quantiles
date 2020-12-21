@@ -1,4 +1,4 @@
-use crate::traits::Digest;
+use crate::traits::{Digest, OwnedSize};
 use num_traits::Float;
 
 #[derive(Clone)]
@@ -10,6 +10,18 @@ where
     digest: T,
     buffer: Vec<F>,
     capacity: usize,
+}
+
+impl<T, F> OwnedSize for BufferedDigest<T, F>
+where
+    T: Digest<F> + OwnedSize,
+    F: Float,
+{
+    fn owned_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+            + std::mem::size_of::<F>() * self.buffer.capacity()
+            + (self.digest.owned_size() - std::mem::size_of::<T>()) // Don't count the size of the digest twice.
+    }
 }
 
 impl<T, F> BufferedDigest<T, F>

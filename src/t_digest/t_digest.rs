@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use crate::t_digest::centroid::Centroid;
-use crate::traits::Digest;
+use crate::traits::{Digest, OwnedSize};
 use crate::util::keyed_sum_tree::KeyedSumTree;
 use crate::util::weighted_average;
 use num_traits::{cast::ToPrimitive, Float, NumAssignOps};
@@ -13,7 +13,7 @@ pub struct TDigest<F, G, T>
 where
     F: Fn(T, T, T) -> T,
     G: Fn(T, T, T) -> T,
-    T: Float + ToPrimitive + Send + Sync,
+    T: Float + Send + Sync,
 {
     /// Vector of centroids
     pub centroids: Vec<Centroid<T>>,
@@ -29,11 +29,22 @@ where
     pub max: T,
 }
 
+impl<F, G, T> OwnedSize for TDigest<F, G, T>
+where
+    F: Fn(T, T, T) -> T,
+    G: Fn(T, T, T) -> T,
+    T: Float + Send + Sync + NumAssignOps,
+{
+    fn owned_size(&self) -> usize {
+        std::mem::size_of::<Self>() + std::mem::size_of::<Centroid<T>>() * self.centroids.capacity()
+    }
+}
+
 impl<F, G, T> Digest<T> for TDigest<F, G, T>
 where
     F: Fn(T, T, T) -> T,
     G: Fn(T, T, T) -> T,
-    T: Float + ToPrimitive + Send + Sync + NumAssignOps,
+    T: Float + Send + Sync + NumAssignOps,
 {
     fn add(&mut self, item: T) {
         self.add_centroid_buffer(vec![Centroid {

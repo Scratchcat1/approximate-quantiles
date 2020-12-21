@@ -31,6 +31,20 @@ where
         .collect();
 }
 
+/// Generate a vector of values from a uniform distribution applied to the tan function
+/// # Arguments
+/// `size` Size of the vector to generate
+pub fn gen_uniform_tan_vec<F>(size: i32) -> Vec<F>
+where
+    F: Float,
+{
+    let mut rng = rand::thread_rng();
+    let uniform = Uniform::from(0.0..1001.0);
+    return (0..size)
+        .map(|_| F::from(uniform.sample(&mut rng).tan()).unwrap())
+        .collect();
+}
+
 /// Generate a vector of 1-weighted centroids from a uniform distribution
 /// # Arguments
 /// `size` Size of the vector to generate
@@ -129,10 +143,13 @@ where
             }
         }
 
-        // println!(
-        //     "pass {}, low: {:?}, current: {:?}, high: {:?}",
-        //     pass_count, low, current_param, high
-        // );
+        println!(
+            "pass {}, low: {:?}, current: {:?}, high: {:?}",
+            pass_count,
+            low.to_f64().unwrap(),
+            current_param.to_f64().unwrap(),
+            high.to_f64().unwrap()
+        );
 
         if (pass_count as f64 / test_count as f64) >= pass_ratio {
             high = current_param;

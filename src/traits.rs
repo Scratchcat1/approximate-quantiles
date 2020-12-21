@@ -28,3 +28,10 @@ where
     /// * `quantile` The quantile to estimate the value of. 0 <= `quantile` <= 1.
     fn est_value_at_quantile(&mut self, quantile: F) -> F;
 }
+
+pub trait OwnedSize {
+    /// Returns the occupied and owned in bytes
+    /// Example for Vec<f64>:
+    /// `std::mem::size_of::<Vec<f64>>() + std::mem::size_of::<f64>() * self.capacity()`
+    fn owned_size(&self) -> usize;
+}

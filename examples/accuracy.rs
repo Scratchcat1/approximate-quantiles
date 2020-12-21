@@ -1,21 +1,22 @@
 use approximate_quantiles::relative_compactor::RCSketch;
 use approximate_quantiles::t_digest::{scale_functions, t_digest::TDigest};
-use approximate_quantiles::traits::Digest;
+use approximate_quantiles::traits::{Digest, OwnedSize};
 use approximate_quantiles::util::linear_digest::LinearDigest;
 use approximate_quantiles::util::{
-    gen_uniform_vec, opt_accuracy_parameter, sample_digest_accuracy,
+    gen_uniform_tan_vec, gen_uniform_vec, opt_accuracy_parameter, sample_digest_accuracy,
 };
 use num_traits::{Float, NumAssignOps};
 use plotters::prelude::*;
 use std::error::Error;
 use std::path::Path;
 
-pub struct Line<T>
+pub struct Line<'a, T>
 where
     T: Float,
 {
     name: String,
     datapoints: Vec<(T, Vec<T>)>,
+    colour: &'a RGBColor,
 }
 
 pub struct DataStat<T>
@@ -106,7 +107,7 @@ where
         .set_label_area_size(LabelAreaPosition::Bottom, 40)
         .build_cartesian_2d(
             (min_x.to_f64().unwrap()..max_x.to_f64().unwrap()).log_scale(),
-            (min_y.to_f64().unwrap() + 1e-4..max_y.to_f64().unwrap() * 1e6).log_scale(),
+            (min_y.to_f64().unwrap() + 1e-4..max_y.to_f64().unwrap()).log_scale(),
         )?;
 
     chart
@@ -146,14 +147,14 @@ where
                 data_stats.iter().map(|data_stat| {
                     (
                         data_stat.x.to_f64().unwrap(),
-                        data_stat.y_mean.to_f64().unwrap() * 1e6,
+                        data_stat.y_mean.to_f64().unwrap(),
                     )
                 }),
-                &BLUE,
+                s.colour,
             ))
             .expect("Failed to draw mean series")
             .label(&s.name)
-            .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &BLUE));
+            .legend(move |(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], s.colour));
 
         chart
             .draw_series(data_stats.iter().map(|data_stat| {
@@ -161,14 +162,14 @@ where
                     vec![
                         (
                             data_stat.x.to_f64().unwrap(),
-                            data_stat.y_max.to_f64().unwrap() * 1e6,
+                            data_stat.y_max.to_f64().unwrap(),
                         ),
                         (
                             data_stat.x.to_f64().unwrap(),
-                            data_stat.y_min.to_f64().unwrap() * 1e6,
+                            data_stat.y_min.to_f64().unwrap(),
                         ),
                     ],
-                    &BLUE,
+                    s.colour,
                 )
             }))
             .expect("Failed to draw mean series");
@@ -221,7 +222,7 @@ where
 
     let opt_rc_sketch_param = opt_accuracy_parameter(
         create_rcsketch,
-        || gen_uniform_vec(100_000),
+        || gen_uniform_tan_vec(100_0000),
         test_func,
         100,
         0.9,
@@ -230,13 +231,17 @@ where
     )
     .expect("Failed to find solution for compression parameter");
     println!(
-        "Required compression parameter for RCSketch was {}",
-        opt_rc_sketch_param.to_f64().unwrap()
+        "Required compression parameter for RCSketch was {}, size: {} bytes",
+        opt_rc_sketch_param.to_f64().unwrap(),
+        {
+            let x = create_rcsketch(&gen_uniform_tan_vec(100_0000), opt_rc_sketch_param);
+            x.owned_size()
+        }
     );
 
     let opt_t_digest_param = opt_accuracy_parameter(
         create_t_digest,
-        || gen_uniform_vec(100_000),
+        || gen_uniform_tan_vec(100_0000),
         test_func,
         100,
         0.9,
@@ -245,16 +250,49 @@ where
     )
     .expect("Failed to find solution for compression parameter");
     println!(
-        "Required compression parameter for T Digest was {}",
-        opt_t_digest_param.to_f64().unwrap()
+        "Required compression parameter for T Digest was {}, size: {} bytes",
+        opt_t_digest_param.to_f64().unwrap(),
+        {
+            let x = create_t_digest(&gen_uniform_tan_vec(100_0000), opt_t_digest_param);
+            x.owned_size()
+        }
     );
 }
-fn accuracy_against_space_usage<T>()
+
+// fn create_rcsketch<'a, T>(accuracy_param: T) -> Box<dyn Fn(&[T]) -> RCSketch<T> + 'a>
+// where
+//     T: Float + 'a,
+// {
+//     Box::new(move |dataset: &[T]| {
+//         let mut digest = RCSketch::new(dataset.len(), accuracy_param.to_usize().unwrap());
+//         digest.add_buffer(dataset);
+//         digest
+//     })
+// }
+
+// fn create_t_digest<'a, F, G, T>(compression_param: T) -> Box<dyn Fn(&[T]) -> TDigest<F, G, T> + 'a>
+// where
+//     T: Float + Send + Sync + NumAssignOps + 'a,
+//     F: Fn(T, T, T) -> T,
+//     G: Fn(T, T, T) -> T,
+// {
+//     Box::new(move |dataset: &[T]| {
+//         let mut digest = TDigest::new(
+//             scale_functions::k2,
+//             scale_functions::inv_k2,
+//             compression_param,
+//         );
+//         digest.add_buffer(dataset);
+//         digest
+//     })
+// }
+
+fn error_against_quantile<T>()
 where
     T: Float + Send + Sync + NumAssignOps,
 {
     let test_func =
-        |value: T| move |digest: &mut dyn Digest<T>| digest.est_quantile_at_value(value);
+        |quantile: T| move |digest: &mut dyn Digest<T>| digest.est_value_at_quantile(quantile);
 
     let create_rcsketch = |accuracy_param: T| {
         move |dataset: &[T]| {
@@ -279,12 +317,12 @@ where
     let mut series = Vec::new();
 
     let mut s = Vec::new();
-    for i in &[10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0] {
+    for i in &[1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 0.5] {
         let accuracy_measurements = sample_digest_accuracy(
             create_rcsketch(T::from(50.0).unwrap()),
             || gen_uniform_vec(100_000),
             test_func(T::from(*i).unwrap()),
-            absolute_error,
+            |a, b| absolute_error(a, b) * T::from(1e6).unwrap(),
             100,
         )
         .unwrap();
@@ -294,15 +332,16 @@ where
     series.push(Line {
         name: "RCSketch".to_string(),
         datapoints: s,
+        colour: &RED,
     });
 
     let mut s = Vec::new();
-    for i in &[10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0] {
+    for i in &[1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 0.5] {
         let accuracy_measurements = sample_digest_accuracy(
             create_t_digest(T::from(100.0).unwrap()),
             || gen_uniform_vec(100_000),
             test_func(T::from(*i).unwrap()),
-            absolute_error,
+            |a, b| absolute_error(a, b) * T::from(1e6).unwrap(),
             100,
         )
         .unwrap();
@@ -312,14 +351,90 @@ where
     series.push(Line {
         name: "t-Digest".to_string(),
         datapoints: s,
+        colour: &BLUE,
     });
 
     plot_line_graph(
-        "Error against input for estimate quantile from value",
+        "Error against input for value estimate at quantile",
         series,
-        &Path::new("plots/acc_vs_input_est_quantile_from_value.png"),
-        "value (0..1000)",
+        &Path::new("plots/acc_vs_input_est_value_from_quantile.png"),
+        "Quantile",
         "Absolute Error (ppm)",
+    )
+    .unwrap();
+}
+
+fn plot_memory_usage_against_compression_parameter<T>()
+where
+    T: Float + Sync + Send + NumAssignOps,
+{
+    let create_rcsketch = |dataset: &[T], param: T| {
+        let mut digest = RCSketch::new(dataset.len(), param.to_usize().unwrap());
+        digest.add_buffer(dataset);
+        digest
+    };
+
+    let create_t_digest = |dataset: &[T], param: T| {
+        let mut digest = TDigest::new(&scale_functions::k2, &scale_functions::inv_k2, param);
+        digest.add_buffer(dataset);
+        digest
+    };
+
+    let mut series = Vec::new();
+    let comp_params: Vec<u32> = (0..12).map(|x| 10 << x).collect();
+    let mut s = Vec::new();
+    for comp_param in &comp_params {
+        let x = create_rcsketch(&gen_uniform_vec(100_000), T::from(*comp_param).unwrap());
+        println!("{}", x.owned_size());
+        s.push((
+            T::from(*comp_param).unwrap(),
+            vec![T::from(x.owned_size()).unwrap()],
+        ));
+    }
+
+    series.push(Line {
+        name: "RCSketch".to_string(),
+        datapoints: s,
+        colour: &RED,
+    });
+
+    let mut s = Vec::new();
+    for comp_param in &comp_params {
+        let x = create_rcsketch(&gen_uniform_vec(10000), T::from(*comp_param).unwrap());
+        println!("{}", x.owned_size());
+        s.push((
+            T::from(*comp_param).unwrap(),
+            vec![T::from(x.owned_size()).unwrap()],
+        ));
+    }
+
+    series.push(Line {
+        name: "RCSketch n = 10^4".to_string(),
+        datapoints: s,
+        colour: &RED,
+    });
+
+    let mut s = Vec::new();
+    for comp_param in &comp_params {
+        let x = create_t_digest(&gen_uniform_vec(100_000), T::from(*comp_param).unwrap());
+        println!("{}", x.owned_size());
+        s.push((
+            T::from(*comp_param).unwrap(),
+            vec![T::from(x.owned_size()).unwrap()],
+        ));
+    }
+
+    series.push(Line {
+        name: "T-Digest".to_string(),
+        datapoints: s,
+        colour: &BLUE,
+    });
+    plot_line_graph(
+        "Memory usage against compression/accuracy parameter",
+        series,
+        &Path::new("plots/mem_vs_comp_param.png"),
+        "Compression/Accuracy parameter",
+        "Memory usage bytes",
     )
     .unwrap();
 }
@@ -333,23 +448,9 @@ where
 }
 
 fn main() {
-    accuracy_against_space_usage::<f64>();
+    error_against_quantile::<f64>();
+    determine_required_parameter::<f32>();
     determine_required_parameter::<f64>();
-    // plot_line_graph(
-    //     "bla",
-    //     vec![
-    //         Line {
-    //             name: "line".to_string(),
-    //             datapoints: vec![(0.0, vec![1.0, 2.0, 3.0]), (1.0, vec![1.0, 10.0, 3.0])],
-    //         },
-    //         Line {
-    //             name: "line2".to_string(),
-    //             datapoints: vec![(5.0, vec![1.0, -2.0, 3.0]), (3.0, vec![1.0, 10.0, 3.0])],
-    //         },
-    //     ],
-    //     "accuracy",
-    //     "storage usage",
-    // )
-    // .expect("Failed to plot");
+    plot_memory_usage_against_compression_parameter::<f32>();
     println!("Complete");
 }

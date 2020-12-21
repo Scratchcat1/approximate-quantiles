@@ -1,4 +1,4 @@
-use crate::traits::Digest;
+use crate::traits::{Digest, OwnedSize};
 use num_traits::{cast::ToPrimitive, Float};
 use std::cmp::Ordering;
 
@@ -19,6 +19,22 @@ where
     pub count: u64,
     /// Compaction counter
     pub compaction_counters: Vec<u32>,
+}
+
+impl<F> OwnedSize for RCSketch<F>
+where
+    F: Float,
+{
+    fn owned_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+            + std::mem::size_of::<Vec<F>>() * self.buffers.capacity()
+            + self
+                .buffers
+                .iter()
+                .map(|buffer| std::mem::size_of::<F>() * buffer.capacity())
+                .sum::<usize>()
+            + std::mem::size_of::<u32>() * self.compaction_counters.capacity()
+    }
 }
 
 impl<F> Digest<F> for RCSketch<F>
@@ -68,7 +84,7 @@ where
             .max_by(|a, b| a.partial_cmp(b).unwrap())
             .unwrap();
         let mut mid = (start + end) / F::from(2.0).unwrap();
-        while (end - start).abs() > F::from(0.00001).unwrap() {
+        while (end - start).abs() / (end.abs() + start.abs()) > F::from(0.00001).unwrap() {
             mid = (start + end) / F::from(2.0).unwrap();
             let current_quantile = self.est_quantile_at_value(mid);
 
