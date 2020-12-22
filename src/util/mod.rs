@@ -3,7 +3,7 @@ use crate::traits::Digest;
 use crate::util::linear_digest::LinearDigest;
 use num_traits::Float;
 use rand::distributions::{Distribution, Uniform};
-
+use rayon::prelude::*;
 pub mod keyed_sum_tree;
 pub mod linear_digest;
 
@@ -122,26 +122,26 @@ pub fn opt_accuracy_parameter<D, C, G, T, F>(
     epsilon: F,
 ) -> Result<F, String>
 where
-    C: Fn(&[F], F) -> D,
-    G: Fn() -> Vec<F>,
-    T: Fn(&mut dyn Digest<F>, &mut LinearDigest<F>) -> bool,
+    C: Fn(&[F], F) -> D + Sync + Send,
+    G: Fn() -> Vec<F> + Sync + Send,
+    T: Fn(&mut dyn Digest<F>, &mut LinearDigest<F>) -> bool + Sync + Send,
     D: Digest<F>,
-    F: Float,
+    F: Float + Sync + Send,
 {
     let mut high = max_param;
     let mut low = F::from(0.0).unwrap();
     let mut current_param = (high + low) / F::from(2.0).unwrap();
     loop {
-        let mut pass_count = 0;
-        for _ in 0..test_count {
-            let dataset = gen_dataset();
-            let mut linear_digest = LinearDigest::new();
-            linear_digest.add_buffer(&dataset);
-            let mut digest = create_digest(&dataset, current_param);
-            if test_func(&mut digest, &mut linear_digest) {
-                pass_count += 1;
-            }
-        }
+        let pass_count = (0..test_count)
+            .into_par_iter()
+            .filter(|_| {
+                let dataset = gen_dataset();
+                let mut linear_digest = LinearDigest::new();
+                linear_digest.add_buffer(&dataset);
+                let mut digest = create_digest(&dataset, current_param);
+                test_func(&mut digest, &mut linear_digest)
+            })
+            .count();
 
         println!(
             "pass {}, low: {:?}, current: {:?}, high: {:?}",
@@ -181,24 +181,23 @@ pub fn sample_digest_accuracy<D, C, G, T, E, F>(
     test_count: u32,
 ) -> Result<Vec<F>, String>
 where
-    C: Fn(&[F]) -> D,
-    G: Fn() -> Vec<F>,
-    T: Fn(&mut dyn Digest<F>) -> F,
+    C: Fn(&[F]) -> D + Send + Sync,
+    G: Fn() -> Vec<F> + Send + Sync,
+    T: Fn(&mut dyn Digest<F>) -> F + Send + Sync,
     D: Digest<F>,
-    E: Fn(F, F) -> F,
-    F: Float,
+    E: Fn(F, F) -> F + Send + Sync,
+    F: Float + Send + Sync,
 {
-    let mut results = Vec::new();
-    for _ in 0..test_count {
-        let dataset = gen_dataset();
-        let mut linear_digest = LinearDigest::new();
-        linear_digest.add_buffer(&dataset);
-        let mut digest = create_digest(&dataset);
-        results.push(error_func(
-            test_func(&mut digest),
-            test_func(&mut linear_digest),
-        ));
-    }
+    let results: Vec<F> = (0..test_count)
+        .into_par_iter()
+        .map(|_| {
+            let dataset = gen_dataset();
+            let mut linear_digest = LinearDigest::new();
+            linear_digest.add_buffer(&dataset);
+            let mut digest = create_digest(&dataset);
+            error_func(test_func(&mut digest), test_func(&mut linear_digest))
+        })
+        .collect();
     Ok(results)
 }
 
