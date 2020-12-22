@@ -39,7 +39,7 @@ where
     F: Float,
 {
     let mut rng = rand::thread_rng();
-    let uniform = Uniform::from(0.0..1001.0);
+    let uniform = Uniform::from(-2.0..2.0);
     return (0..size)
         .map(|_| F::from(uniform.sample(&mut rng).tan()).unwrap())
         .collect();

@@ -190,22 +190,38 @@ where
     T: Float + Send + Sync + NumAssignOps,
 {
     let test_func = |digest: &mut dyn Digest<T>, linear_digest: &mut LinearDigest<T>| {
+        let values = [
+            linear_digest.est_value_at_quantile(T::from(1e-5).unwrap()),
+            linear_digest.est_value_at_quantile(T::from(1e-4).unwrap()),
+            linear_digest.est_value_at_quantile(T::from(1e-3).unwrap()),
+            linear_digest.est_value_at_quantile(T::from(1e-2).unwrap()),
+            linear_digest.est_value_at_quantile(T::from(1e-1).unwrap()),
+        ];
+        // println!(
+        //     "{} {} {}",
+        //     values[0].to_f64().unwrap(),
+        //     digest.est_quantile_at_value(values[0]).to_f64().unwrap(),
+        //     linear_digest
+        //         .est_quantile_at_value(values[0])
+        //         .to_f64()
+        //         .unwrap()
+        // );
         absolute_error(
-            digest.est_quantile_at_value(T::from(1.0).unwrap()),
-            linear_digest.est_quantile_at_value(T::from(1.0).unwrap()),
-        ) < T::from(1e-4).unwrap()
+            digest.est_quantile_at_value(values[0]),
+            linear_digest.est_quantile_at_value(values[0]),
+        ) < T::from(1e-6).unwrap()
             && absolute_error(
-                digest.est_quantile_at_value(T::from(10.0).unwrap()),
-                linear_digest.est_quantile_at_value(T::from(10.0).unwrap()),
+                digest.est_quantile_at_value(values[1]),
+                linear_digest.est_quantile_at_value(values[1]),
+            ) < T::from(1e-5).unwrap()
+            && absolute_error(
+                digest.est_quantile_at_value(values[2]),
+                linear_digest.est_quantile_at_value(values[2]),
+            ) < T::from(1e-4).unwrap()
+            && absolute_error(
+                digest.est_quantile_at_value(values[3]),
+                linear_digest.est_quantile_at_value(values[3]),
             ) < T::from(1e-3).unwrap()
-            && absolute_error(
-                digest.est_quantile_at_value(T::from(100.0).unwrap()),
-                linear_digest.est_quantile_at_value(T::from(100.0).unwrap()),
-            ) < T::from(1e-2).unwrap()
-            && absolute_error(
-                digest.est_quantile_at_value(T::from(250.0).unwrap()),
-                linear_digest.est_quantile_at_value(T::from(250.0).unwrap()),
-            ) < T::from(1e-1).unwrap()
     };
 
     let create_rcsketch = |dataset: &[T], param: T| {
@@ -220,6 +236,9 @@ where
         digest
     };
 
+    // let mut x = gen_uniform_tan_vec::<f32>(100_0000);
+    // x.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    // println!("{:?}", &x[999_990..999_999]);
     let opt_rc_sketch_param = opt_accuracy_parameter(
         create_rcsketch,
         || gen_uniform_tan_vec(100_0000),
@@ -320,9 +339,9 @@ where
     for i in &[1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 0.5] {
         let accuracy_measurements = sample_digest_accuracy(
             create_rcsketch(T::from(50.0).unwrap()),
-            || gen_uniform_vec(100_000),
+            || gen_uniform_tan_vec(100_000),
             test_func(T::from(*i).unwrap()),
-            |a, b| absolute_error(a, b) * T::from(1e6).unwrap(),
+            |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
             100,
         )
         .unwrap();
@@ -338,10 +357,10 @@ where
     let mut s = Vec::new();
     for i in &[1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 0.5] {
         let accuracy_measurements = sample_digest_accuracy(
-            create_t_digest(T::from(100.0).unwrap()),
-            || gen_uniform_vec(100_000),
+            create_t_digest(T::from(2000.0).unwrap()),
+            || gen_uniform_tan_vec(100_000),
             test_func(T::from(*i).unwrap()),
-            |a, b| absolute_error(a, b) * T::from(1e6).unwrap(),
+            |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
             100,
         )
         .unwrap();
@@ -381,7 +400,7 @@ where
     };
 
     let mut series = Vec::new();
-    let comp_params: Vec<u32> = (0..12).map(|x| 10 << x).collect();
+    let comp_params: Vec<u32> = (0..16).map(|x| 1 << x).collect();
     let mut s = Vec::new();
     for comp_param in &comp_params {
         let x = create_rcsketch(&gen_uniform_vec(100_000), T::from(*comp_param).unwrap());
@@ -445,6 +464,22 @@ where
 {
     // println!("{} {}", measured, actual);
     (measured - actual).abs()
+}
+
+fn relative_error<T>(measured: T, actual: T) -> T
+where
+    T: Float,
+{
+    // println!("{} {}", measured, actual);
+    // if ((measured - actual).abs() / actual.abs() >= T::from(1.0).unwrap()) {
+    //     println!(
+    //         "Error {} {} {}",
+    //         measured.to_f64().unwrap(),
+    //         actual.to_f64().unwrap(),
+    //         ((measured - actual).abs() / actual.abs()).to_f64().unwrap()
+    //     );
+    // }
+    (measured - actual).abs() / actual.abs()
 }
 
 fn main() {

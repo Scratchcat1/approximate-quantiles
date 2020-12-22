@@ -61,6 +61,23 @@ where
     }
 
     fn est_value_at_quantile(&mut self, target_quantile: F) -> F {
+        // println!(
+        //     "{:?}",
+        //     self.buffers
+        //         .iter()
+        //         .map(|buffer| buffer
+        //             .iter()
+        //             .map(|x| x.to_f64().unwrap())
+        //             .collect::<Vec<f64>>())
+        //         .collect::<Vec<Vec<f64>>>()
+        // );
+        // println!(
+        //     "{:?}",
+        //     self.buffers[0]
+        //         .iter()
+        //         .map(|x| x.to_f64().unwrap())
+        //         .collect::<Vec<f64>>()
+        // );
         let mut start = *self
             .buffers
             .iter()
@@ -84,12 +101,28 @@ where
             .max_by(|a, b| a.partial_cmp(b).unwrap())
             .unwrap();
         let mut mid = (start + end) / F::from(2.0).unwrap();
+        // println!("----------------");
         while (end - start).abs() / (end.abs() + start.abs()) > F::from(0.00001).unwrap() {
             mid = (start + end) / F::from(2.0).unwrap();
             let current_quantile = self.est_quantile_at_value(mid);
 
+            // println!(
+            //     "{} {} {} {} {} {} {} {}",
+            //     target_quantile.to_f64().unwrap(),
+            //     current_quantile.to_f64().unwrap(),
+            //     self.est_quantile_at_value(start).to_f64().unwrap(),
+            //     self.est_quantile_at_value(mid).to_f64().unwrap(),
+            //     self.est_quantile_at_value(end).to_f64().unwrap(),
+            //     start.to_f64().unwrap(),
+            //     mid.to_f64().unwrap(),
+            //     end.to_f64().unwrap()
+            // );
+
+            // Don't return immediately on a match, this avoids high errors when looking for very small quantiles
+            // Example [-100, -4, -3, -2, 0]
+            // First round: mid = -50 and would satisfy q = 0.25 and return -50 instead of -4
             match current_quantile.partial_cmp(&target_quantile).unwrap() {
-                Ordering::Equal => return mid,
+                Ordering::Equal => start = mid,
                 Ordering::Less => start = mid,
                 Ordering::Greater => end = mid,
             }
@@ -227,10 +260,11 @@ where
     /// Estimate the rank of an item in the input set of the sketch
     /// # Arguments
     /// * `rank_item` Item to estimate the rank of
-    pub fn interpolate_rank(&self, rank_item: F) -> u64 {
+    pub fn interpolate_rank(&self, rank_item: F) -> usize {
         let mut rank = 0;
         for i in 0..self.buffers.len() {
-            rank += self.buffers[i].iter().filter(|x| **x <= rank_item).count() as u64 * (1 << i);
+            rank += self.buffers[i].iter().filter(|x| **x < rank_item).count() * (1 << i);
+            // rank += (self.buffers[i].iter().filter(|x| **x == rank_item).count() * (1 << i)) / 2;
         }
         rank
     }
