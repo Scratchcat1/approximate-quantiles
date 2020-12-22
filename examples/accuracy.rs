@@ -71,6 +71,12 @@ where
             s.datapoints
                 .iter()
                 .map(|dp| {
+                    // println!(
+                    //     "{:?}",
+                    //     dp.1.iter()
+                    //         .map(|x| x.to_f64().unwrap())
+                    //         .collect::<Vec<f64>>()
+                    // );
                     dp.1.iter()
                         .min_by(|a, b| a.partial_cmp(&b).unwrap())
                         .unwrap()
@@ -306,7 +312,7 @@ where
 //     })
 // }
 
-fn error_against_quantile<T>()
+fn value_error_against_quantile<T>()
 where
     T: Float + Send + Sync + NumAssignOps,
 {
@@ -338,7 +344,7 @@ where
     let mut s = Vec::new();
     for i in &[1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 0.5] {
         let accuracy_measurements = sample_digest_accuracy(
-            create_rcsketch(T::from(50.0).unwrap()),
+            create_rcsketch(T::from(20.0).unwrap()),
             || gen_uniform_tan_vec(100_000),
             test_func(T::from(*i).unwrap()),
             |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
@@ -357,7 +363,7 @@ where
     let mut s = Vec::new();
     for i in &[1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 0.5] {
         let accuracy_measurements = sample_digest_accuracy(
-            create_t_digest(T::from(2000.0).unwrap()),
+            create_t_digest(T::from(3000.0).unwrap()),
             || gen_uniform_tan_vec(100_000),
             test_func(T::from(*i).unwrap()),
             |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
@@ -383,6 +389,84 @@ where
     .unwrap();
 }
 
+fn quantile_error_against_value<T>()
+where
+    T: Float + Send + Sync + NumAssignOps,
+{
+    let test_func =
+        |value: T| move |digest: &mut dyn Digest<T>| digest.est_quantile_at_value(value);
+
+    let create_rcsketch = |accuracy_param: T| {
+        move |dataset: &[T]| {
+            let mut digest = RCSketch::new(dataset.len(), accuracy_param.to_usize().unwrap());
+            digest.add_buffer(dataset);
+            digest
+        }
+    };
+
+    let create_t_digest = |compression_param: T| {
+        move |dataset: &[T]| {
+            let mut digest = TDigest::new(
+                &scale_functions::k2,
+                &scale_functions::inv_k2,
+                compression_param,
+            );
+            digest.add_buffer(dataset);
+            digest
+        }
+    };
+
+    let test_values = [1.0, 2.0, 5.0, 10.0, 50.0, 100.0, 500.0];
+    let mut series = Vec::new();
+
+    let mut s = Vec::new();
+    for i in &test_values {
+        let accuracy_measurements = sample_digest_accuracy(
+            create_rcsketch(T::from(20.0).unwrap()),
+            || gen_uniform_vec(100_000),
+            test_func(T::from(*i).unwrap()),
+            |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
+            100,
+        )
+        .unwrap();
+        s.push((T::from(*i).unwrap(), accuracy_measurements));
+    }
+
+    series.push(Line {
+        name: "RCSketch".to_string(),
+        datapoints: s,
+        colour: &RED,
+    });
+
+    let mut s = Vec::new();
+    for i in &test_values {
+        let accuracy_measurements = sample_digest_accuracy(
+            create_t_digest(T::from(3000.0).unwrap()),
+            || gen_uniform_vec(100_000),
+            test_func(T::from(*i).unwrap()),
+            |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
+            100,
+        )
+        .unwrap();
+        s.push((T::from(*i).unwrap(), accuracy_measurements));
+    }
+
+    series.push(Line {
+        name: "t-Digest".to_string(),
+        datapoints: s,
+        colour: &BLUE,
+    });
+
+    plot_line_graph(
+        "Error against input for quantile estimate at value",
+        series,
+        &Path::new("plots/acc_vs_input_est_quantile_from_value.png"),
+        "Value",
+        "Absolute Error (ppm)",
+    )
+    .unwrap();
+}
+
 fn plot_memory_usage_against_compression_parameter<T>()
 where
     T: Float + Sync + Send + NumAssignOps,
@@ -400,7 +484,7 @@ where
     };
 
     let mut series = Vec::new();
-    let comp_params: Vec<u32> = (0..16).map(|x| 1 << x).collect();
+    let comp_params: Vec<u32> = (1..16).map(|x| 1 << x).collect();
     let mut s = Vec::new();
     for comp_param in &comp_params {
         let x = create_rcsketch(&gen_uniform_vec(100_000), T::from(*comp_param).unwrap());
@@ -412,7 +496,7 @@ where
     }
 
     series.push(Line {
-        name: "RCSketch".to_string(),
+        name: "RCSketch, n = 10^6".to_string(),
         datapoints: s,
         colour: &RED,
     });
@@ -420,7 +504,11 @@ where
     let mut s = Vec::new();
     for comp_param in &comp_params {
         let x = create_rcsketch(&gen_uniform_vec(10000), T::from(*comp_param).unwrap());
-        println!("{}", x.owned_size());
+        println!(
+            "RC Digest with param {}: {} bytes",
+            comp_param,
+            x.owned_size()
+        );
         s.push((
             T::from(*comp_param).unwrap(),
             vec![T::from(x.owned_size()).unwrap()],
@@ -428,7 +516,7 @@ where
     }
 
     series.push(Line {
-        name: "RCSketch n = 10^4".to_string(),
+        name: "RCSketch, n = 10^4".to_string(),
         datapoints: s,
         colour: &RED,
     });
@@ -436,7 +524,11 @@ where
     let mut s = Vec::new();
     for comp_param in &comp_params {
         let x = create_t_digest(&gen_uniform_vec(100_000), T::from(*comp_param).unwrap());
-        println!("{}", x.owned_size());
+        println!(
+            "T digest with param {}: {} bytes",
+            comp_param,
+            x.owned_size()
+        );
         s.push((
             T::from(*comp_param).unwrap(),
             vec![T::from(x.owned_size()).unwrap()],
@@ -479,11 +571,21 @@ where
     //         ((measured - actual).abs() / actual.abs()).to_f64().unwrap()
     //     );
     // }
+    // if measured == actual {
+    //     return T::from(0.0).unwrap();
+    // }
+    println!(
+        "Error {} {} {}",
+        measured.to_f64().unwrap(),
+        actual.to_f64().unwrap(),
+        ((measured - actual).abs() / actual.abs()).to_f64().unwrap()
+    );
     (measured - actual).abs() / actual.abs()
 }
 
 fn main() {
-    error_against_quantile::<f64>();
+    value_error_against_quantile::<f32>();
+    quantile_error_against_value::<f32>();
     determine_required_parameter::<f32>();
     determine_required_parameter::<f64>();
     plot_memory_usage_against_compression_parameter::<f32>();
