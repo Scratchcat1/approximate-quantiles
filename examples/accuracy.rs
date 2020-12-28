@@ -7,6 +7,7 @@ use approximate_quantiles::util::{
     sample_digest_accuracy,
 };
 use num_traits::{Float, NumAssignOps};
+use plotters::data::fitting_range;
 use plotters::prelude::*;
 use std::error::Error;
 use std::path::Path;
@@ -20,6 +21,30 @@ where
     colour: &'a RGBColor,
 }
 
+impl<'a, T> Line<'a, T>
+where
+    T: Float,
+{
+    pub fn into_line_f64(self) -> Line<'a, f64> {
+        Line {
+            name: self.name,
+            datapoints: self
+                .datapoints
+                .into_iter()
+                .map(|dp| {
+                    (
+                        dp.0.to_f64().unwrap(),
+                        dp.1.into_iter()
+                            .map(|y_val| y_val.to_f64().unwrap())
+                            .collect(),
+                    )
+                })
+                .collect(),
+            colour: self.colour,
+        }
+    }
+}
+
 pub struct DataStat<T>
 where
     T: Float,
@@ -28,6 +53,91 @@ where
     y_mean: T,
     y_min: T,
     y_max: T,
+}
+
+pub fn plot_box_plot_graph<T>(
+    title: &str,
+    raw_series: Vec<Line<T>>,
+    output_path: &Path,
+    x_label: &str,
+    y_label: &str,
+) -> Result<(), Box<dyn Error>>
+where
+    T: Float,
+{
+    let root = BitMapBackend::new(output_path, (1024, 768)).into_drawing_area();
+
+    root.fill(&WHITE)?;
+
+    let series: Vec<Line<f64>> = raw_series
+        .into_iter()
+        .map(|series| series.into_line_f64())
+        .collect();
+
+    let y_values: Vec<f32> = series
+        .iter()
+        .map(|s| {
+            s.datapoints
+                .iter()
+                .map(|dp| dp.1.iter().map(|x| *x as f32).collect::<Vec<f32>>())
+                .flatten()
+                .collect::<Vec<f32>>()
+        })
+        .flatten()
+        .collect();
+    println!("{:?}", y_values);
+    let y_values_range = fitting_range(y_values.iter());
+    let x_values: Vec<f64> = series[0..1]
+        .iter()
+        .map(|s| s.datapoints.iter().map(|a| a.0).collect::<Vec<f64>>())
+        .flatten()
+        .collect();
+
+    // println!("{} {} {} {}", min_x, max_x, min_y, max_y);
+    // let mut colors = (0..).map(Palette99::pick);
+    println!("{:?}", &y_values_range);
+    let mut chart = ChartBuilder::on(&root)
+        .margin(15)
+        .margin_right(30)
+        .caption(&title, ("sans-serif", 25))
+        .set_label_area_size(LabelAreaPosition::Left, 60)
+        // .set_label_area_size(LabelAreaPosition::Right, 60)
+        .set_label_area_size(LabelAreaPosition::Bottom, 40)
+        .build_cartesian_2d(x_values[..].into_segmented(), y_values_range)?;
+
+    chart
+        .configure_mesh()
+        .disable_x_mesh()
+        .disable_y_mesh()
+        .x_desc(x_label)
+        .y_desc(y_label)
+        .draw()?;
+
+    let mut offsets = (-12..).step_by(24);
+    series.iter().for_each(|s| {
+        let current_offset = offsets.next().unwrap();
+        chart
+            .draw_series(s.datapoints.iter().map(|dp| {
+                Boxplot::new_vertical(SegmentValue::CenterOf(&dp.0), &Quartiles::new(&dp.1))
+                    .width(10)
+                    .whisker_width(0.5)
+                    .style(s.colour)
+                    .offset(current_offset)
+            }))
+            .expect("Failed to draw boxplot series")
+            .label(&s.name)
+            .legend(move |(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], s.colour));
+    });
+
+    chart
+        .configure_series_labels()
+        .border_style(&BLACK)
+        .background_style(&WHITE.mix(0.8))
+        .draw()
+        .unwrap();
+    println!("Drew {}", title);
+
+    Ok(())
 }
 
 pub fn plot_line_graph<T>(
@@ -341,7 +451,7 @@ where
     };
 
     let rcsketch_param = T::from(20.0).unwrap();
-    let t_digest_param = T::from(3000.0).unwrap();
+    let t_digest_param = T::from(6000.0).unwrap();
 
     let input_size = 100_000;
     let rc_sketch_mem_size = {
@@ -356,7 +466,7 @@ where
     let mut series = Vec::new();
 
     let mut s = Vec::new();
-    for i in &[1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 0.5] {
+    for i in &[1e-5, 1e-4, 1e-3, 1e-2, 1e-1] {
         let accuracy_measurements = sample_digest_accuracy(
             create_rcsketch(rcsketch_param),
             || gen_uniform_tan_vec(input_size),
@@ -375,7 +485,7 @@ where
     });
 
     let mut s = Vec::new();
-    for i in &[1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 0.5] {
+    for i in &[1e-5, 1e-4, 1e-3, 1e-2, 1e-1] {
         let accuracy_measurements = sample_digest_accuracy(
             create_t_digest(t_digest_param),
             || gen_uniform_tan_vec(input_size),
@@ -393,7 +503,7 @@ where
         colour: &BLUE,
     });
 
-    plot_line_graph(
+    plot_box_plot_graph(
         "Error against input for value estimate at quantile",
         series,
         &Path::new("plots/acc_vs_input_est_value_from_quantile.png"),
@@ -487,7 +597,7 @@ where
         colour: &BLUE,
     });
 
-    plot_line_graph(
+    plot_box_plot_graph(
         "Error against input for quantile estimate at value",
         series,
         &Path::new("plots/acc_vs_input_est_quantile_from_value.png"),

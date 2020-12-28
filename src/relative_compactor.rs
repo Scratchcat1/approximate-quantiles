@@ -1,5 +1,6 @@
 use crate::traits::{Digest, OwnedSize};
 use num_traits::{cast::ToPrimitive, Float};
+use rand_distr::{Distribution, Uniform};
 use std::cmp::Ordering;
 
 #[derive(Debug, Clone)]
@@ -237,6 +238,9 @@ where
             };
             let output_items = self.compact(rc_index, compaction_index);
             self.insert_at_rc_batch(&output_items, rc_index + 1, fast_compaction);
+            // for item in output_items {
+            //     self.insert_at_rc(item, rc_index + 1, fast_compaction);
+            // }
         }
     }
 
@@ -248,11 +252,14 @@ where
         // Sort and extract the largest values
         self.buffers[rc_index].sort_by(|a, b| a.partial_cmp(&b).unwrap());
         let upper = self.buffers[rc_index].split_off(compact_index);
+        let mut rng = rand::thread_rng();
+        let uniform = Uniform::new(0, 2);
+        let chosen_pos = uniform.sample(&mut rng);
         // Remove half the largest values
         upper
             .into_iter()
             .enumerate()
-            .filter(|(pos, _value)| pos % 2 == 0)
+            .filter(|(pos, _value)| pos % 2 == chosen_pos)
             .map(|(_pos, value)| value)
             .collect()
     }
@@ -264,6 +271,22 @@ where
         let mut rank = 0;
         for i in 0..self.buffers.len() {
             rank += self.buffers[i].iter().filter(|x| **x < rank_item).count() * (1 << i);
+            // let less_than = self.buffers[i].iter().filter(|x| **x < rank_item).count() * (1 << i);
+            // let mut cloned_buffer = self.buffers[i].clone();
+            // cloned_buffer.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            // let index = match cloned_buffer.binary_search_by(|x| x.partial_cmp(&rank_item).unwrap())
+            // {
+            //     Ok(index) => index,
+            //     Err(index) => index,
+            // };
+            // // Make sure there are elements to the left and right of the index
+            // if i >= 2 && index > 0 && index < cloned_buffer.len() - 1 {
+            //     rank += (((cloned_buffer[index + 1] - rank_item).to_f64().unwrap()
+            //         / (cloned_buffer[index + 1] - cloned_buffer[index])
+            //             .to_f64()
+            //             .unwrap())
+            //         * (2.0.powi(i as i32 - 1))) as usize;
+            // }
             // rank += (self.buffers[i].iter().filter(|x| **x == rank_item).count() * (1 << i)) / 2;
         }
         rank
