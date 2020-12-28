@@ -2,7 +2,8 @@ use crate::t_digest::centroid::Centroid;
 use crate::traits::Digest;
 use crate::util::linear_digest::LinearDigest;
 use num_traits::Float;
-use rand::distributions::{Distribution, Uniform};
+// use rand::distributions::Uniform;
+use rand_distr::{Distribution, Exp, Uniform};
 use rayon::prelude::*;
 pub mod keyed_sum_tree;
 pub mod linear_digest;
@@ -42,6 +43,21 @@ where
     let uniform = Uniform::from(-2.0..2.0);
     return (0..size)
         .map(|_| F::from(uniform.sample(&mut rng).tan()).unwrap())
+        .collect();
+}
+
+/// Generate a vector of values from a exp distribution
+/// # Arguments
+/// `size` Size of the vector to generate
+/// `lambda` Lambda to pass to the exponential distribution
+pub fn gen_uniform_exp_vec<F>(size: i32, lambda: F) -> Vec<F>
+where
+    F: Float,
+{
+    let mut rng = rand::thread_rng();
+    let exp = Exp::new(lambda.to_f64().unwrap()).unwrap();
+    return (0..size)
+        .map(|_| F::from(exp.sample(&mut rng)).unwrap())
         .collect();
 }
 

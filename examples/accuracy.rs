@@ -3,7 +3,8 @@ use approximate_quantiles::t_digest::{scale_functions, t_digest::TDigest};
 use approximate_quantiles::traits::{Digest, OwnedSize};
 use approximate_quantiles::util::linear_digest::LinearDigest;
 use approximate_quantiles::util::{
-    gen_uniform_tan_vec, gen_uniform_vec, opt_accuracy_parameter, sample_digest_accuracy,
+    gen_uniform_exp_vec, gen_uniform_tan_vec, gen_uniform_vec, opt_accuracy_parameter,
+    sample_digest_accuracy,
 };
 use num_traits::{Float, NumAssignOps};
 use plotters::prelude::*;
@@ -125,7 +126,6 @@ where
         .y_desc(y_label)
         .draw()?;
 
-    println!("Drawing series");
     series.iter().for_each(|s| {
         let data_stats: Vec<DataStat<T>> = s
             .datapoints
@@ -187,6 +187,7 @@ where
         .background_style(&WHITE.mix(0.8))
         .draw()
         .unwrap();
+    println!("Drew {}", title);
 
     Ok(())
 }
@@ -339,13 +340,26 @@ where
         }
     };
 
+    let rcsketch_param = T::from(20.0).unwrap();
+    let t_digest_param = T::from(3000.0).unwrap();
+
+    let input_size = 100_000;
+    let rc_sketch_mem_size = {
+        let digest = create_rcsketch(rcsketch_param)(&gen_uniform_tan_vec(input_size));
+        digest.owned_size()
+    };
+    let t_digest_mem_size = {
+        let digest = create_t_digest(t_digest_param)(&gen_uniform_tan_vec(input_size));
+        digest.owned_size()
+    };
+
     let mut series = Vec::new();
 
     let mut s = Vec::new();
     for i in &[1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 0.5] {
         let accuracy_measurements = sample_digest_accuracy(
-            create_rcsketch(T::from(20.0).unwrap()),
-            || gen_uniform_tan_vec(100_000),
+            create_rcsketch(rcsketch_param),
+            || gen_uniform_tan_vec(input_size),
             test_func(T::from(*i).unwrap()),
             |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
             100,
@@ -355,7 +369,7 @@ where
     }
 
     series.push(Line {
-        name: "RCSketch".to_string(),
+        name: format!("RC Sketch ({} bytes)", rc_sketch_mem_size),
         datapoints: s,
         colour: &RED,
     });
@@ -363,8 +377,8 @@ where
     let mut s = Vec::new();
     for i in &[1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 0.5] {
         let accuracy_measurements = sample_digest_accuracy(
-            create_t_digest(T::from(3000.0).unwrap()),
-            || gen_uniform_tan_vec(100_000),
+            create_t_digest(t_digest_param),
+            || gen_uniform_tan_vec(input_size),
             test_func(T::from(*i).unwrap()),
             |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
             100,
@@ -374,7 +388,7 @@ where
     }
 
     series.push(Line {
-        name: "t-Digest".to_string(),
+        name: format!("t-Digest ({} bytes)", t_digest_mem_size),
         datapoints: s,
         colour: &BLUE,
     });
@@ -416,14 +430,30 @@ where
         }
     };
 
-    let test_values = [1.0, 2.0, 5.0, 10.0, 50.0, 100.0, 500.0];
+    let test_values = [
+        1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3, 1e-2, 5e-2, 1e-1, 0.2, 0.5,
+    ];
+
+    let rcsketch_param = T::from(20.0).unwrap();
+    let t_digest_param = T::from(3000.0).unwrap();
+
+    let input_size = 100_000;
+    let rc_sketch_mem_size = {
+        let digest = create_rcsketch(rcsketch_param)(&gen_uniform_tan_vec(input_size));
+        digest.owned_size()
+    };
+    let t_digest_mem_size = {
+        let digest = create_t_digest(t_digest_param)(&gen_uniform_tan_vec(input_size));
+        digest.owned_size()
+    };
+
     let mut series = Vec::new();
 
     let mut s = Vec::new();
     for i in &test_values {
         let accuracy_measurements = sample_digest_accuracy(
-            create_rcsketch(T::from(20.0).unwrap()),
-            || gen_uniform_vec(100_000),
+            create_rcsketch(rcsketch_param),
+            || gen_uniform_exp_vec(input_size, T::from(1.0).unwrap()),
             test_func(T::from(*i).unwrap()),
             |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
             100,
@@ -433,7 +463,7 @@ where
     }
 
     series.push(Line {
-        name: "RCSketch".to_string(),
+        name: format!("RCSketch ({} bytes)", rc_sketch_mem_size),
         datapoints: s,
         colour: &RED,
     });
@@ -441,8 +471,8 @@ where
     let mut s = Vec::new();
     for i in &test_values {
         let accuracy_measurements = sample_digest_accuracy(
-            create_t_digest(T::from(3000.0).unwrap()),
-            || gen_uniform_vec(100_000),
+            create_t_digest(t_digest_param),
+            || gen_uniform_exp_vec(input_size, T::from(1.0).unwrap()),
             test_func(T::from(*i).unwrap()),
             |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
             100,
@@ -452,7 +482,7 @@ where
     }
 
     series.push(Line {
-        name: "t-Digest".to_string(),
+        name: format!("t-Digest ({} bytes)", t_digest_mem_size),
         datapoints: s,
         colour: &BLUE,
     });
@@ -571,9 +601,9 @@ where
     //         ((measured - actual).abs() / actual.abs()).to_f64().unwrap()
     //     );
     // }
-    // if measured == actual {
-    //     return T::from(0.0).unwrap();
-    // }
+    if actual == T::from(0.0).unwrap() {
+        return measured.abs();
+    }
     println!(
         "Error {} {} {}",
         measured.to_f64().unwrap(),
@@ -586,8 +616,8 @@ where
 fn main() {
     value_error_against_quantile::<f32>();
     quantile_error_against_value::<f32>();
-    determine_required_parameter::<f32>();
-    determine_required_parameter::<f64>();
+    // determine_required_parameter::<f32>();
+    // determine_required_parameter::<f64>();
     plot_memory_usage_against_compression_parameter::<f32>();
     println!("Complete");
 }
