@@ -19,6 +19,7 @@ where
     name: String,
     datapoints: Vec<(T, Vec<T>)>,
     colour: &'a RGBColor,
+    marker: Option<String>,
 }
 
 impl<'a, T> Line<'a, T>
@@ -41,6 +42,7 @@ where
                 })
                 .collect(),
             colour: self.colour,
+            marker: self.marker,
         }
     }
 }
@@ -146,11 +148,13 @@ pub fn plot_line_graph<T>(
     output_path: &Path,
     x_label: &str,
     y_label: &str,
+    show_error_bars: bool,
 ) -> Result<(), Box<dyn Error>>
 where
     T: Float,
 {
     let root = BitMapBackend::new(output_path, (1024, 768)).into_drawing_area();
+    let marker_size = 14;
 
     root.fill(&WHITE)?;
     let min_x = series
@@ -258,7 +262,7 @@ where
             })
             .collect();
 
-        chart
+        let line_element = chart
             .draw_series(LineSeries::new(
                 data_stats.iter().map(|data_stat| {
                     (
@@ -268,27 +272,67 @@ where
                 }),
                 s.colour,
             ))
-            .expect("Failed to draw mean series")
-            .label(&s.name)
-            .legend(move |(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], s.colour));
-
-        chart
-            .draw_series(data_stats.iter().map(|data_stat| {
-                PathElement::new(
-                    vec![
+            .expect("Failed to draw series")
+            .label(&s.name);
+        match &s.marker {
+            Some(marker) => {
+                line_element.legend(move |(x, y)| {
+                    EmptyElement::at((x, y))
+                        + Text::new(
+                            marker.clone(),
+                            (-marker_size / 2 + 10, -marker_size / 2),
+                            TextStyle::from(("sans-serif", marker_size).into_font())
+                                .color(s.colour),
+                        )
+                });
+            }
+            None => {
+                line_element
+                    .legend(move |(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], s.colour));
+            }
+        }
+        if let Some(marker) = &s.marker {
+            chart
+                .draw_series(PointSeries::of_element(
+                    data_stats.iter().map(|data_stat| {
                         (
                             data_stat.x.to_f64().unwrap(),
-                            data_stat.y_max.to_f64().unwrap(),
-                        ),
-                        (
-                            data_stat.x.to_f64().unwrap(),
-                            data_stat.y_min.to_f64().unwrap(),
-                        ),
-                    ],
+                            data_stat.y_mean.to_f64().unwrap(),
+                        )
+                    }),
+                    marker_size,
                     s.colour,
-                )
-            }))
-            .expect("Failed to draw mean series");
+                    &|coord, size, _| {
+                        EmptyElement::at(coord)
+                            + Text::new(
+                                marker.clone(),
+                                (-size / 2, -size / 2),
+                                TextStyle::from(("sans-serif", size).into_font()).color(s.colour),
+                            )
+                    },
+                ))
+                .expect("Failed to draw points");
+        }
+
+        if show_error_bars {
+            chart
+                .draw_series(data_stats.iter().map(|data_stat| {
+                    PathElement::new(
+                        vec![
+                            (
+                                data_stat.x.to_f64().unwrap(),
+                                data_stat.y_max.to_f64().unwrap(),
+                            ),
+                            (
+                                data_stat.x.to_f64().unwrap(),
+                                data_stat.y_min.to_f64().unwrap(),
+                            ),
+                        ],
+                        s.colour,
+                    )
+                }))
+                .expect("Failed to draw mean series");
+        }
     });
 
     chart
@@ -425,7 +469,7 @@ where
 
 fn value_error_against_quantile<T>()
 where
-    T: Float + Send + Sync + NumAssignOps,
+    T: Float + Send + Sync + NumAssignOps + std::fmt::Debug,
 {
     let test_func =
         |quantile: T| move |digest: &mut dyn Digest<T>| digest.est_value_at_quantile(quantile);
@@ -456,6 +500,7 @@ where
     let input_size = 100_000;
     let rc_sketch_mem_size = {
         let digest = create_rcsketch(rcsketch_param)(&gen_uniform_tan_vec(input_size));
+        println!("{:?}", digest.buffers);
         digest.owned_size()
     };
     let t_digest_mem_size = {
@@ -482,6 +527,7 @@ where
         name: format!("RC Sketch ({} bytes)", rc_sketch_mem_size),
         datapoints: s,
         colour: &RED,
+        marker: None,
     });
 
     let mut s = Vec::new();
@@ -501,6 +547,7 @@ where
         name: format!("t-Digest ({} bytes)", t_digest_mem_size),
         datapoints: s,
         colour: &BLUE,
+        marker: None,
     });
 
     plot_box_plot_graph(
@@ -515,7 +562,7 @@ where
 
 fn quantile_error_against_value<T>()
 where
-    T: Float + Send + Sync + NumAssignOps,
+    T: Float + Send + Sync + NumAssignOps + std::fmt::Debug,
 {
     let test_func =
         |value: T| move |digest: &mut dyn Digest<T>| digest.est_quantile_at_value(value);
@@ -541,8 +588,11 @@ where
     };
 
     let test_values = [
-        1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3, 1e-2, 5e-2, 1e-1, 0.2, 0.5,
+        -10.0, -9.0, -8.0, -7.0, -6.0, -5.0, -4.0, -3.0, -2.0, -1.0, -0.5,
     ];
+    // let mut x = gen_uniform_exp_vec(10000, T::from(1.0).unwrap());
+    // x.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    // println!("{:?}", x);
 
     let rcsketch_param = T::from(20.0).unwrap();
     let t_digest_param = T::from(3000.0).unwrap();
@@ -576,6 +626,7 @@ where
         name: format!("RCSketch ({} bytes)", rc_sketch_mem_size),
         datapoints: s,
         colour: &RED,
+        marker: None,
     });
 
     let mut s = Vec::new();
@@ -595,6 +646,7 @@ where
         name: format!("t-Digest ({} bytes)", t_digest_mem_size),
         datapoints: s,
         colour: &BLUE,
+        marker: None,
     });
 
     plot_box_plot_graph(
@@ -603,6 +655,228 @@ where
         &Path::new("plots/acc_vs_input_est_quantile_from_value.png"),
         "Value",
         "Absolute Error (ppm)",
+    )
+    .unwrap();
+}
+
+fn plot_error_against_mem_usage<T>()
+where
+    T: Float + Send + Sync + NumAssignOps + std::fmt::Debug,
+{
+    let test_func =
+        |value: T| move |digest: &mut dyn Digest<T>| digest.est_value_at_quantile(value);
+
+    let create_rcsketch = |accuracy_param: T| {
+        move |dataset: &[T]| {
+            let mut digest = RCSketch::new(dataset.len(), accuracy_param.to_usize().unwrap());
+            digest.add_buffer(dataset);
+            digest
+        }
+    };
+
+    let create_t_digest = |compression_param: T| {
+        move |dataset: &[T]| {
+            let mut digest = TDigest::new(
+                &scale_functions::k2,
+                &scale_functions::inv_k2,
+                compression_param,
+            );
+            digest.add_buffer(dataset);
+            digest
+        }
+    };
+
+    let rc_test_values = [1.0, 5.0, 10.0, 20.0, 40.0, 60.0, 100.0]
+        .iter()
+        .map(|x| T::from(*x).unwrap())
+        .collect::<Vec<T>>();
+    let t_digest_test_values = (4..14)
+        // .iter()
+        .map(|x| T::from(1 << x).unwrap())
+        .collect::<Vec<T>>();
+
+    let quantiles = [
+        (1e-5, "X"),
+        (1e-4, "▲"),
+        (1e-3, "◆"),
+        (1e-2, "●"),
+        (1e-1, "■"),
+    ]
+    .iter()
+    .map(|(q, marker)| (T::from(*q).unwrap(), marker.to_string()))
+    .collect::<Vec<(T, String)>>();
+
+    let input_size = 100_000;
+    let rc_sketch_mem_size = |param| {
+        let digest = create_rcsketch(param)(&gen_uniform_tan_vec(input_size));
+        digest.owned_size()
+    };
+    let t_digest_mem_size = |param| {
+        let digest = create_t_digest(param)(&gen_uniform_tan_vec(input_size));
+        digest.owned_size()
+    };
+
+    let mut series = Vec::new();
+
+    for (quantile, marker) in quantiles {
+        let mut s = Vec::new();
+        for rcsketch_param in &rc_test_values {
+            let accuracy_measurements = sample_digest_accuracy(
+                create_rcsketch(*rcsketch_param),
+                || gen_uniform_exp_vec(input_size, T::from(1.0).unwrap()),
+                test_func(quantile),
+                |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
+                100,
+            )
+            .unwrap();
+            s.push((
+                T::from(rc_sketch_mem_size(*rcsketch_param)).unwrap(),
+                accuracy_measurements,
+            ));
+        }
+
+        series.push(Line {
+            name: format!("RCSketch, q = 1e{:?}", quantile.log10().to_i32().unwrap()),
+            datapoints: s,
+            colour: &RED,
+            marker: Some(marker.clone()),
+        });
+
+        let mut s = Vec::new();
+        for t_digest_param in &t_digest_test_values {
+            let accuracy_measurements = sample_digest_accuracy(
+                create_t_digest(*t_digest_param),
+                || gen_uniform_exp_vec(input_size, T::from(1.0).unwrap()),
+                test_func(quantile),
+                |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
+                100,
+            )
+            .unwrap();
+            s.push((
+                T::from(t_digest_mem_size(*t_digest_param)).unwrap(),
+                accuracy_measurements,
+            ));
+        }
+
+        series.push(Line {
+            name: format!("t-Digest, q = 1e{:?}", quantile.log10().to_i32().unwrap()),
+            datapoints: s,
+            colour: &BLUE,
+            marker: Some(marker.clone()),
+        });
+    }
+    plot_line_graph(
+        "Error at against memory usage for quantile estimate at value",
+        series,
+        &Path::new("plots/err_vs_mem_usage_for_est_quantile_from_value.png"),
+        "Value",
+        "Absolute Error (ppm)",
+        false,
+    )
+    .unwrap();
+}
+
+fn plot_error_against_input_size<T>()
+where
+    T: Float + Send + Sync + NumAssignOps + std::fmt::Debug,
+{
+    let test_func =
+        |value: T| move |digest: &mut dyn Digest<T>| digest.est_value_at_quantile(value);
+
+    let create_rcsketch = |accuracy_param: T| {
+        move |dataset: &[T]| {
+            let mut digest = RCSketch::new(dataset.len(), accuracy_param.to_usize().unwrap());
+            digest.add_buffer(dataset);
+            digest
+        }
+    };
+
+    let create_t_digest = |compression_param: T| {
+        move |dataset: &[T]| {
+            let mut digest = TDigest::new(
+                &scale_functions::k2,
+                &scale_functions::inv_k2,
+                compression_param,
+            );
+            digest.add_buffer(dataset);
+            digest
+        }
+    };
+
+    let quantiles = [
+        (1e-5, "X"),
+        (1e-4, "▲"),
+        (1e-3, "◆"),
+        (1e-2, "●"),
+        (1e-1, "■"),
+    ]
+    .iter()
+    .map(|(q, marker)| (T::from(*q).unwrap(), marker.to_string()))
+    .collect::<Vec<(T, String)>>();
+
+    let rcsketch_param = T::from(20.0).unwrap();
+    let t_digest_param = T::from(10000.0).unwrap();
+
+    let input_sizes = [10_000, 100_000, 1_000_000];
+    // let rc_sketch_mem_size = |input_size| {
+    //     let digest = create_rcsketch(rcsketch_param)(&gen_uniform_tan_vec(input_size));
+    //     digest.owned_size()
+    // };
+    // let t_digest_mem_size = |input_size| {
+    //     let digest = create_t_digest(t_digest_param)(&gen_uniform_tan_vec(input_size));
+    //     digest.owned_size()
+    // };
+
+    let mut series = Vec::new();
+
+    for (quantile, marker) in quantiles {
+        let mut s = Vec::new();
+        for input_size in &input_sizes {
+            let accuracy_measurements = sample_digest_accuracy(
+                create_rcsketch(rcsketch_param),
+                || gen_uniform_exp_vec(*input_size, T::from(1.0).unwrap()),
+                test_func(quantile),
+                |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
+                100,
+            )
+            .unwrap();
+            s.push((T::from(*input_size).unwrap(), accuracy_measurements));
+        }
+
+        series.push(Line {
+            name: format!("RCSketch, q = 1e{:?}", quantile.log10().to_i32().unwrap()),
+            datapoints: s,
+            colour: &RED,
+            marker: Some(marker.clone()),
+        });
+
+        let mut s = Vec::new();
+        for input_size in &input_sizes {
+            let accuracy_measurements = sample_digest_accuracy(
+                create_t_digest(t_digest_param),
+                || gen_uniform_exp_vec(*input_size, T::from(1.0).unwrap()),
+                test_func(quantile),
+                |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
+                100,
+            )
+            .unwrap();
+            s.push((T::from(*input_size).unwrap(), accuracy_measurements));
+        }
+
+        series.push(Line {
+            name: format!("t-Digest, q = 1e{:?}", quantile.log10().to_i32().unwrap()),
+            datapoints: s,
+            colour: &BLUE,
+            marker: Some(marker.clone()),
+        });
+    }
+    plot_line_graph(
+        "Error at against input size for quantile estimate at value",
+        series,
+        &Path::new("plots/err_vs_input_for_est_quantile_from_value.png"),
+        "Input size",
+        "Absolute Error (ppm)",
+        false,
     )
     .unwrap();
 }
@@ -639,6 +913,7 @@ where
         name: "RCSketch, n = 10^6".to_string(),
         datapoints: s,
         colour: &RED,
+        marker: None,
     });
 
     let mut s = Vec::new();
@@ -659,6 +934,7 @@ where
         name: "RCSketch, n = 10^4".to_string(),
         datapoints: s,
         colour: &RED,
+        marker: None,
     });
 
     let mut s = Vec::new();
@@ -679,6 +955,7 @@ where
         name: "T-Digest".to_string(),
         datapoints: s,
         colour: &BLUE,
+        marker: None,
     });
     plot_line_graph(
         "Memory usage against compression/accuracy parameter",
@@ -686,6 +963,7 @@ where
         &Path::new("plots/mem_vs_comp_param.png"),
         "Compression/Accuracy parameter",
         "Memory usage bytes",
+        false,
     )
     .unwrap();
 }
@@ -714,20 +992,22 @@ where
     if actual == T::from(0.0).unwrap() {
         return measured.abs();
     }
-    println!(
-        "Error {} {} {}",
-        measured.to_f64().unwrap(),
-        actual.to_f64().unwrap(),
-        ((measured - actual).abs() / actual.abs()).to_f64().unwrap()
-    );
+    // println!(
+    //     "Error {} {} {}",
+    //     measured.to_f64().unwrap(),
+    //     actual.to_f64().unwrap(),
+    //     ((measured - actual).abs() / actual.abs()).to_f64().unwrap()
+    // );
     (measured - actual).abs() / actual.abs()
 }
 
 fn main() {
-    value_error_against_quantile::<f32>();
-    quantile_error_against_value::<f32>();
+    // value_error_against_quantile::<f32>();
+    // quantile_error_against_value::<f32>();
     // determine_required_parameter::<f32>();
     // determine_required_parameter::<f64>();
+    // plot_error_against_mem_usage::<f32>();
+    plot_error_against_input_size::<f32>();
     plot_memory_usage_against_compression_parameter::<f32>();
     println!("Complete");
 }

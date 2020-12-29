@@ -19,7 +19,7 @@ where
 {
     fn owned_size(&self) -> usize {
         std::mem::size_of::<Self>()
-            + std::mem::size_of::<F>() * self.buffer.capacity()
+            + std::mem::size_of::<F>() * self.buffer.len()
             + (self.digest.owned_size() - std::mem::size_of::<T>()) // Don't count the size of the digest twice.
     }
 }

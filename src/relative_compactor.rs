@@ -54,6 +54,9 @@ where
         items
             .chunks(self.buffer_size)
             .for_each(|chunk| self.insert_at_rc_batch(chunk, 0, false));
+        // for item in items {
+        //     self.insert_at_rc(*item, 0, false);
+        // }
         self.count += length;
     }
 
@@ -213,6 +216,9 @@ where
             };
             let output_items = self.compact(rc_index, compaction_index);
             self.insert_at_rc_batch(&output_items, rc_index + 1, fast_compaction);
+            // for item in output_items {
+            //     self.insert_at_rc(item, rc_index + 1, fast_compaction);
+            // }
         }
     }
 
@@ -270,7 +276,7 @@ where
     pub fn interpolate_rank(&self, rank_item: F) -> usize {
         let mut rank = 0;
         for i in 0..self.buffers.len() {
-            rank += self.buffers[i].iter().filter(|x| **x < rank_item).count() * (1 << i);
+            rank += self.buffers[i].iter().filter(|x| **x <= rank_item).count() * (1 << i);
             // let less_than = self.buffers[i].iter().filter(|x| **x < rank_item).count() * (1 << i);
             // let mut cloned_buffer = self.buffers[i].clone();
             // cloned_buffer.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -280,9 +286,10 @@ where
             //     Err(index) => index,
             // };
             // // Make sure there are elements to the left and right of the index
-            // if i >= 2 && index > 0 && index < cloned_buffer.len() - 1 {
-            //     rank += (((cloned_buffer[index + 1] - rank_item).to_f64().unwrap()
-            //         / (cloned_buffer[index + 1] - cloned_buffer[index])
+            // if index >= 1 && index < cloned_buffer.len() {
+            //     assert!(cloned_buffer[index] >= rank_item && rank_item >= cloned_buffer[index - 1]);
+            //     rank += (((cloned_buffer[index] - rank_item).to_f64().unwrap()
+            //         / (cloned_buffer[index] - cloned_buffer[index - 1])
             //             .to_f64()
             //             .unwrap())
             //         * (2.0.powi(i as i32 - 1))) as usize;
