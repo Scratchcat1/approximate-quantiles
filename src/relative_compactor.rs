@@ -22,6 +22,12 @@ where
     pub compaction_counters: Vec<u32>,
 }
 
+#[derive(Copy, Debug, Clone)]
+pub enum CompactionMethod {
+    Default,
+    AverageNeighbour,
+}
+
 impl<F> OwnedSize for RCSketch<F>
 where
     F: Float,
@@ -44,7 +50,7 @@ where
 {
     fn add(&mut self, item: F) {
         // Insert into the bottom buffer
-        self.insert_at_rc(item, 0, false);
+        self.insert_at_rc(item, 0, false, CompactionMethod::Default);
         self.count += 1;
     }
 
@@ -53,7 +59,7 @@ where
         // Insert into the bottom buffer
         items
             .chunks(self.buffer_size)
-            .for_each(|chunk| self.insert_at_rc_batch(chunk, 0, false));
+            .for_each(|chunk| self.insert_at_rc_batch(chunk, 0, false, CompactionMethod::Default));
         // for item in items {
         //     self.insert_at_rc(*item, 0, false);
         // }
@@ -158,7 +164,7 @@ where
         return usize::max(
             (F::from(2.0).unwrap()
                 * F::from(k).unwrap()
-                * F::from(input_length / k).unwrap().log2())
+                * F::from(input_length / k).unwrap().log2().ceil())
             .to_usize()
             .unwrap_or(0),
             2 * k,
@@ -191,7 +197,24 @@ where
         // Insert into the bottom buffer
         items
             .chunks(self.buffer_size)
-            .for_each(|chunk| self.insert_at_rc_batch(chunk, 0, true));
+            .for_each(|chunk| self.insert_at_rc_batch(chunk, 0, true, CompactionMethod::Default));
+        self.count += length;
+    }
+
+    /// Insert items into in the sketch
+    /// * `fast_compaction` Enables faster compaction in exchange for potentially increased error
+    /// * `compaction_method` The method with which to compact the removed elements
+    pub fn add_buffer_custom(
+        &mut self,
+        items: &[F],
+        fast_compaction: bool,
+        compaction_method: CompactionMethod,
+    ) {
+        let length = items.len() as u64;
+        // Insert into the bottom buffer
+        items.chunks(self.buffer_size).for_each(|chunk| {
+            self.insert_at_rc_batch(chunk, 0, fast_compaction, compaction_method)
+        });
         self.count += length;
     }
 
@@ -200,7 +223,14 @@ where
     /// * `item` The item to insert
     /// * `rc_index` The index of the buffer to insert at
     /// * `fast_compaction` Enables faster compaction in exchange for potentially increased error
-    pub fn insert_at_rc(&mut self, item: F, rc_index: usize, fast_compaction: bool) {
+    /// * `compaction_method` The method with which to compact the removed elements
+    pub fn insert_at_rc(
+        &mut self,
+        item: F,
+        rc_index: usize,
+        fast_compaction: bool,
+        compaction_method: CompactionMethod,
+    ) {
         // Create a new buffer if required
         if self.buffers.len() <= rc_index {
             self.buffers.push(Vec::with_capacity(self.buffer_size));
@@ -214,8 +244,13 @@ where
             } else {
                 self.get_compact_index(rc_index)
             };
-            let output_items = self.compact(rc_index, compaction_index);
-            self.insert_at_rc_batch(&output_items, rc_index + 1, fast_compaction);
+            let output_items = self.compact(rc_index, compaction_index, compaction_method);
+            self.insert_at_rc_batch(
+                &output_items,
+                rc_index + 1,
+                fast_compaction,
+                compaction_method,
+            );
             // for item in output_items {
             //     self.insert_at_rc(item, rc_index + 1, fast_compaction);
             // }
@@ -227,7 +262,14 @@ where
     /// * `items` The items to insert
     /// * `rc_index` The index of the buffer to insert at
     /// * `fast_compaction` Enables faster compaction in exchange for potentially increased error
-    pub fn insert_at_rc_batch(&mut self, items: &[F], rc_index: usize, fast_compaction: bool) {
+    /// * `compaction_method` The method with which to compact the removed elements
+    pub fn insert_at_rc_batch(
+        &mut self,
+        items: &[F],
+        rc_index: usize,
+        fast_compaction: bool,
+        compaction_method: CompactionMethod,
+    ) {
         // Create a new buffer if required
         if self.buffers.len() <= rc_index {
             self.buffers.push(Vec::with_capacity(self.buffer_size));
@@ -242,8 +284,13 @@ where
             } else {
                 self.get_compact_index(rc_index)
             };
-            let output_items = self.compact(rc_index, compaction_index);
-            self.insert_at_rc_batch(&output_items, rc_index + 1, fast_compaction);
+            let output_items = self.compact(rc_index, compaction_index, compaction_method);
+            self.insert_at_rc_batch(
+                &output_items,
+                rc_index + 1,
+                fast_compaction,
+                compaction_method,
+            );
             // for item in output_items {
             //     self.insert_at_rc(item, rc_index + 1, fast_compaction);
             // }
@@ -254,20 +301,38 @@ where
     /// # Arguments
     /// * `rc_index` Index of the buffer to compact
     /// * `compact_index` Index after which to compact
-    pub fn compact(&mut self, rc_index: usize, compact_index: usize) -> Vec<F> {
+    /// * `compaction_method` The method with which to compact the removed elements
+    pub fn compact(
+        &mut self,
+        rc_index: usize,
+        compact_index: usize,
+        compaction_method: CompactionMethod,
+    ) -> Vec<F> {
         // Sort and extract the largest values
         self.buffers[rc_index].sort_by(|a, b| a.partial_cmp(&b).unwrap());
         let upper = self.buffers[rc_index].split_off(compact_index);
-        let mut rng = rand::thread_rng();
-        let uniform = Uniform::new(0, 2);
-        let chosen_pos = uniform.sample(&mut rng);
-        // Remove half the largest values
-        upper
-            .into_iter()
-            .enumerate()
-            .filter(|(pos, _value)| pos % 2 == chosen_pos)
-            .map(|(_pos, value)| value)
-            .collect()
+
+        match compaction_method {
+            CompactionMethod::Default => {
+                let mut rng = rand::thread_rng();
+                let uniform = Uniform::new(0, 2);
+                let chosen_pos = uniform.sample(&mut rng);
+                // Remove half the largest values
+                upper
+                    .into_iter()
+                    .enumerate()
+                    .filter(|(pos, _value)| pos % 2 == chosen_pos)
+                    .map(|(_pos, value)| value)
+                    .collect()
+            }
+            CompactionMethod::AverageNeighbour => {
+                let mut output = Vec::new();
+                for i in 0..upper.len() / 2 {
+                    output.push((upper[2 * i] + upper[2 * i + 1]) / F::from(2).unwrap());
+                }
+                output
+            }
+        }
     }
 
     /// Estimate the rank of an item in the input set of the sketch

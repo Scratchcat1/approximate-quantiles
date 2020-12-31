@@ -1,4 +1,4 @@
-use approximate_quantiles::relative_compactor::RCSketch;
+use approximate_quantiles::relative_compactor::{CompactionMethod, RCSketch};
 use approximate_quantiles::t_digest::{scale_functions, t_digest::TDigest};
 use approximate_quantiles::traits::{Digest, OwnedSize};
 use approximate_quantiles::util::linear_digest::LinearDigest;
@@ -481,6 +481,13 @@ where
             digest
         }
     };
+    let create_compact_avg_rcsketch = |accuracy_param: T| {
+        move |dataset: &[T]| {
+            let mut digest = RCSketch::new(dataset.len(), accuracy_param.to_usize().unwrap());
+            digest.add_buffer_custom(dataset, false, CompactionMethod::AverageNeighbour);
+            digest
+        }
+    };
 
     let create_t_digest = |compression_param: T| {
         move |dataset: &[T]| {
@@ -533,6 +540,26 @@ where
     let mut s = Vec::new();
     for i in &[1e-5, 1e-4, 1e-3, 1e-2, 1e-1] {
         let accuracy_measurements = sample_digest_accuracy(
+            create_compact_avg_rcsketch(rcsketch_param),
+            || gen_uniform_tan_vec(input_size),
+            test_func(T::from(*i).unwrap()),
+            |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
+            100,
+        )
+        .unwrap();
+        s.push((T::from(*i).unwrap(), accuracy_measurements));
+    }
+
+    series.push(Line {
+        name: format!("RC Sketch avg compaction ({} bytes)", rc_sketch_mem_size),
+        datapoints: s,
+        colour: &YELLOW,
+        marker: None,
+    });
+
+    let mut s = Vec::new();
+    for i in &[1e-5, 1e-4, 1e-3, 1e-2, 1e-1] {
+        let accuracy_measurements = sample_digest_accuracy(
             create_t_digest(t_digest_param),
             || gen_uniform_tan_vec(input_size),
             test_func(T::from(*i).unwrap()),
@@ -571,6 +598,14 @@ where
         move |dataset: &[T]| {
             let mut digest = RCSketch::new(dataset.len(), accuracy_param.to_usize().unwrap());
             digest.add_buffer(dataset);
+            digest
+        }
+    };
+
+    let create_compact_avg_rcsketch = |accuracy_param: T| {
+        move |dataset: &[T]| {
+            let mut digest = RCSketch::new(dataset.len(), accuracy_param.to_usize().unwrap());
+            digest.add_buffer_custom(dataset, false, CompactionMethod::AverageNeighbour);
             digest
         }
     };
@@ -626,6 +661,26 @@ where
         name: format!("RCSketch ({} bytes)", rc_sketch_mem_size),
         datapoints: s,
         colour: &RED,
+        marker: None,
+    });
+
+    let mut s = Vec::new();
+    for i in &test_values {
+        let accuracy_measurements = sample_digest_accuracy(
+            create_compact_avg_rcsketch(rcsketch_param),
+            || gen_uniform_exp_vec(input_size, T::from(1.0).unwrap()),
+            test_func(T::from(*i).unwrap()),
+            |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
+            100,
+        )
+        .unwrap();
+        s.push((T::from(*i).unwrap(), accuracy_measurements));
+    }
+
+    series.push(Line {
+        name: format!("RCSketch avg compaction ({} bytes)", rc_sketch_mem_size),
+        datapoints: s,
+        colour: &YELLOW,
         marker: None,
     });
 
@@ -898,29 +953,12 @@ where
     };
 
     let mut series = Vec::new();
-    let comp_params: Vec<u32> = (1..16).map(|x| 1 << x).collect();
+    let comp_params: Vec<u32> = (1..18).map(|x| 1 << x).collect();
     let mut s = Vec::new();
     for comp_param in &comp_params {
-        let x = create_rcsketch(&gen_uniform_vec(100_000), T::from(*comp_param).unwrap());
-        println!("{}", x.owned_size());
-        s.push((
-            T::from(*comp_param).unwrap(),
-            vec![T::from(x.owned_size()).unwrap()],
-        ));
-    }
-
-    series.push(Line {
-        name: "RCSketch, n = 10^6".to_string(),
-        datapoints: s,
-        colour: &RED,
-        marker: None,
-    });
-
-    let mut s = Vec::new();
-    for comp_param in &comp_params {
-        let x = create_rcsketch(&gen_uniform_vec(10000), T::from(*comp_param).unwrap());
+        let x = create_rcsketch(&gen_uniform_vec(10_000_000), T::from(*comp_param).unwrap());
         println!(
-            "RC Digest with param {}: {} bytes",
+            "RC Digest n 10^7 with param {}: {} bytes",
             comp_param,
             x.owned_size()
         );
@@ -931,7 +969,7 @@ where
     }
 
     series.push(Line {
-        name: "RCSketch, n = 10^4".to_string(),
+        name: "RCSketch, n = 10^7".to_string(),
         datapoints: s,
         colour: &RED,
         marker: None,
@@ -939,7 +977,28 @@ where
 
     let mut s = Vec::new();
     for comp_param in &comp_params {
-        let x = create_t_digest(&gen_uniform_vec(100_000), T::from(*comp_param).unwrap());
+        let x = create_rcsketch(&gen_uniform_vec(100_000), T::from(*comp_param).unwrap());
+        println!(
+            "RC Digest n 10^5 with param {}: {} bytes",
+            comp_param,
+            x.owned_size()
+        );
+        s.push((
+            T::from(*comp_param).unwrap(),
+            vec![T::from(x.owned_size()).unwrap()],
+        ));
+    }
+
+    series.push(Line {
+        name: "RCSketch, n = 10^5".to_string(),
+        datapoints: s,
+        colour: &RED,
+        marker: None,
+    });
+
+    let mut s = Vec::new();
+    for comp_param in &comp_params {
+        let x = create_t_digest(&gen_uniform_vec(10_000_000), T::from(*comp_param).unwrap());
         println!(
             "T digest with param {}: {} bytes",
             comp_param,
@@ -952,7 +1011,7 @@ where
     }
 
     series.push(Line {
-        name: "T-Digest".to_string(),
+        name: "T-Digest n = 10^7".to_string(),
         datapoints: s,
         colour: &BLUE,
         marker: None,
@@ -992,12 +1051,13 @@ where
     if actual == T::from(0.0).unwrap() {
         return measured.abs();
     }
-    // println!(
-    //     "Error {} {} {}",
-    //     measured.to_f64().unwrap(),
-    //     actual.to_f64().unwrap(),
-    //     ((measured - actual).abs() / actual.abs()).to_f64().unwrap()
-    // );
+    println!(
+        "Error {} {} {} {}",
+        measured.to_f64().unwrap(),
+        actual.to_f64().unwrap(),
+        (measured - actual).to_f64().unwrap(),
+        ((measured - actual).abs() / actual.abs()).to_f64().unwrap()
+    );
     (measured - actual).abs() / actual.abs()
 }
 
@@ -1007,7 +1067,7 @@ fn main() {
     // determine_required_parameter::<f32>();
     // determine_required_parameter::<f64>();
     // plot_error_against_mem_usage::<f32>();
-    plot_error_against_input_size::<f32>();
+    // plot_error_against_input_size::<f32>();
     plot_memory_usage_against_compression_parameter::<f32>();
     println!("Complete");
 }
