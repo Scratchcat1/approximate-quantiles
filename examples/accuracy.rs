@@ -582,7 +582,7 @@ where
         series,
         &Path::new("plots/acc_vs_input_est_value_from_quantile.png"),
         "Quantile",
-        "Absolute Error (ppm)",
+        "Relative Error (ppm)",
     )
     .unwrap();
 }
@@ -709,7 +709,7 @@ where
         series,
         &Path::new("plots/acc_vs_input_est_quantile_from_value.png"),
         "Value",
-        "Absolute Error (ppm)",
+        "Relative Error (ppm)",
     )
     .unwrap();
 }
@@ -824,8 +824,8 @@ where
         "Error at against memory usage for quantile estimate at value",
         series,
         &Path::new("plots/err_vs_mem_usage_for_est_quantile_from_value.png"),
-        "Value",
-        "Absolute Error (ppm)",
+        "Memory (bytes)",
+        "Relative Error (ppm)",
         false,
     )
     .unwrap();
@@ -926,11 +926,11 @@ where
         });
     }
     plot_line_graph(
-        "Error at against input size for quantile estimate at value",
+        "Error at against input size for value estimate at quantile",
         series,
-        &Path::new("plots/err_vs_input_for_est_quantile_from_value.png"),
+        &Path::new("plots/err_vs_input_for_est_value_from_quantile.png"),
         "Input size",
-        "Absolute Error (ppm)",
+        "Relative Error (ppm)",
         false,
     )
     .unwrap();
@@ -953,7 +953,7 @@ where
     };
 
     let mut series = Vec::new();
-    let comp_params: Vec<u32> = (1..18).map(|x| 1 << x).collect();
+    let comp_params: Vec<u32> = (0..18).map(|x| 1 << x).collect();
     let mut s = Vec::new();
     for comp_param in &comp_params {
         let x = create_rcsketch(&gen_uniform_vec(10_000_000), T::from(*comp_param).unwrap());
@@ -1027,6 +1027,81 @@ where
     .unwrap();
 }
 
+fn plot_memory_usage_against_input_size<T>()
+where
+    T: Float + Sync + Send + NumAssignOps,
+{
+    let create_rcsketch = |dataset: &[T], param: T| {
+        let mut digest = RCSketch::new(dataset.len(), param.to_usize().unwrap());
+        digest.add_buffer(dataset);
+        digest
+    };
+
+    let create_t_digest = |dataset: &[T], param: T| {
+        let mut digest = TDigest::new(&scale_functions::k2, &scale_functions::inv_k2, param);
+        digest.add_buffer(dataset);
+        digest
+    };
+
+    let input_sizes: Vec<i32> = (0..24).map(|x| 1 << x).collect();
+    let rc_sketch_param = T::from(20.0).unwrap();
+    let t_digest_param = T::from(6000.0).unwrap();
+
+    let mut series = Vec::new();
+    let mut s = Vec::new();
+    for input_size in &input_sizes {
+        let x = create_rcsketch(&gen_uniform_vec(*input_size), rc_sketch_param);
+        println!(
+            "RC Sketch n = {}, param = {}, size: {} bytes",
+            input_size,
+            rc_sketch_param.to_f64().unwrap(),
+            x.owned_size()
+        );
+        s.push((
+            T::from(*input_size).unwrap(),
+            vec![T::from(x.owned_size()).unwrap()],
+        ));
+    }
+
+    series.push(Line {
+        name: "RC Sketch param".to_string(),
+        datapoints: s,
+        colour: &RED,
+        marker: None,
+    });
+
+    let mut s = Vec::new();
+    for input_size in &input_sizes {
+        let x = create_t_digest(&gen_uniform_vec(*input_size), t_digest_param);
+        println!(
+            "T-Digest n = {}, param = {}, size: {} bytes",
+            input_size,
+            t_digest_param.to_f64().unwrap(),
+            x.owned_size()
+        );
+        s.push((
+            T::from(*input_size).unwrap(),
+            vec![T::from(x.owned_size()).unwrap()],
+        ));
+    }
+
+    series.push(Line {
+        name: "T-Digest".to_string(),
+        datapoints: s,
+        colour: &BLUE,
+        marker: None,
+    });
+    plot_line_graph(
+        "Memory usage against input_size parameter",
+        series,
+        &Path::new("plots/mem_vs_input_size.png"),
+        "Input size",
+        "Memory usage (bytes)",
+        false,
+    )
+    .unwrap();
+}
+
 fn absolute_error<T>(measured: T, actual: T) -> T
 where
     T: Float,
@@ -1062,12 +1137,13 @@ where
 }
 
 fn main() {
-    // value_error_against_quantile::<f32>();
-    // quantile_error_against_value::<f32>();
+    value_error_against_quantile::<f32>();
+    quantile_error_against_value::<f32>();
     // determine_required_parameter::<f32>();
     // determine_required_parameter::<f64>();
     // plot_error_against_mem_usage::<f32>();
     // plot_error_against_input_size::<f32>();
     plot_memory_usage_against_compression_parameter::<f32>();
+    plot_memory_usage_against_input_size::<f32>();
     println!("Complete");
 }

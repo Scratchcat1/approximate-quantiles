@@ -58,11 +58,8 @@ where
         let length = items.len() as u64;
         // Insert into the bottom buffer
         items
-            .chunks(self.buffer_size)
+            .chunks(self.buffer_size / 2)
             .for_each(|chunk| self.insert_at_rc_batch(chunk, 0, false, CompactionMethod::Default));
-        // for item in items {
-        //     self.insert_at_rc(*item, 0, false);
-        // }
         self.count += length;
     }
 
@@ -193,12 +190,7 @@ where
     }
 
     pub fn add_buffer_fast(&mut self, items: &[F]) {
-        let length = items.len() as u64;
-        // Insert into the bottom buffer
-        items
-            .chunks(self.buffer_size)
-            .for_each(|chunk| self.insert_at_rc_batch(chunk, 0, true, CompactionMethod::Default));
-        self.count += length;
+        self.add_buffer_custom(items, true, CompactionMethod::Default)
     }
 
     /// Insert items into in the sketch
@@ -212,7 +204,7 @@ where
     ) {
         let length = items.len() as u64;
         // Insert into the bottom buffer
-        items.chunks(self.buffer_size).for_each(|chunk| {
+        items.chunks(self.buffer_size / 2).for_each(|chunk| {
             self.insert_at_rc_batch(chunk, 0, fast_compaction, compaction_method)
         });
         self.count += length;
@@ -251,9 +243,6 @@ where
                 fast_compaction,
                 compaction_method,
             );
-            // for item in output_items {
-            //     self.insert_at_rc(item, rc_index + 1, fast_compaction);
-            // }
         }
     }
 
@@ -275,7 +264,15 @@ where
             self.buffers.push(Vec::with_capacity(self.buffer_size));
             self.compaction_counters.push(0);
         }
-        self.buffers[rc_index].extend(items);
+        // Split into two parts so that the buffer is never filled passed the limit.
+        // Since the input from previous compactions can only ever be <= buffer size / 2 only two compactions
+        // are needed even if the current buffer is already full.
+        assert!(items.len() <= self.buffer_size / 2);
+        let (first, second) = match self.buffers[rc_index].len() + items.len() > self.buffer_size {
+            true => items.split_at(self.buffer_size - self.buffers[rc_index].len()),
+            false => (items, &[] as &[F]),
+        };
+        self.buffers[rc_index].extend(first);
         // If buffer is full compact and insert into the next buffer
         // Buffer may be overfilled since more than one item was added so keep compacting until size is below the buffer size.
         while self.buffers[rc_index].len() >= self.buffer_size {
@@ -291,9 +288,10 @@ where
                 fast_compaction,
                 compaction_method,
             );
-            // for item in output_items {
-            //     self.insert_at_rc(item, rc_index + 1, fast_compaction);
-            // }
+        }
+        // Add the second half of the elements if necessary
+        if !second.is_empty() {
+            self.insert_at_rc_batch(second, rc_index, fast_compaction, compaction_method);
         }
     }
 
