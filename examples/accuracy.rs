@@ -3,8 +3,8 @@ use approximate_quantiles::t_digest::{scale_functions, t_digest::TDigest};
 use approximate_quantiles::traits::{Digest, OwnedSize};
 use approximate_quantiles::util::linear_digest::LinearDigest;
 use approximate_quantiles::util::{
-    gen_uniform_exp_vec, gen_uniform_tan_vec, gen_uniform_vec, opt_accuracy_parameter,
-    sample_digest_accuracy,
+    gen_reverse_growing_blocks_vec, gen_uniform_exp_vec, gen_uniform_tan_vec, gen_uniform_vec,
+    opt_accuracy_parameter, sample_digest_accuracy,
 };
 use num_traits::{Float, NumAssignOps};
 use plotters::data::fitting_range;
@@ -67,7 +67,7 @@ pub fn plot_box_plot_graph<T>(
 where
     T: Float,
 {
-    let root = BitMapBackend::new(output_path, (1024, 768)).into_drawing_area();
+    let root = BitMapBackend::new(output_path, (1600, 1200)).into_drawing_area();
 
     root.fill(&WHITE)?;
 
@@ -153,7 +153,7 @@ pub fn plot_line_graph<T>(
 where
     T: Float,
 {
-    let root = BitMapBackend::new(output_path, (1024, 768)).into_drawing_area();
+    let root = BitMapBackend::new(output_path, (1600, 1200)).into_drawing_area();
     let marker_size = 14;
 
     root.fill(&WHITE)?;
@@ -346,6 +346,22 @@ where
     Ok(())
 }
 
+fn get_distributions<F>() -> Vec<(String, Box<dyn Fn(i32) -> Vec<F> + Send + Sync>)>
+where
+    F: Float + Send + Sync,
+{
+    vec![
+        (
+            "Reverse growing blocks".to_string(),
+            Box::new(|input_size| gen_reverse_growing_blocks_vec(input_size)),
+        ),
+        (
+            "Reverse exponential".to_string(),
+            Box::new(|input_size| gen_uniform_exp_vec(input_size, F::from(1.0).unwrap())),
+        ),
+    ]
+}
+
 fn determine_required_parameter<T>()
 where
     T: Float + Send + Sync + NumAssignOps,
@@ -439,33 +455,17 @@ where
     );
 }
 
-// fn create_rcsketch<'a, T>(accuracy_param: T) -> Box<dyn Fn(&[T]) -> RCSketch<T> + 'a>
-// where
-//     T: Float + 'a,
-// {
-//     Box::new(move |dataset: &[T]| {
-//         let mut digest = RCSketch::new(dataset.len(), accuracy_param.to_usize().unwrap());
-//         digest.add_buffer(dataset);
-//         digest
-//     })
-// }
-
-// fn create_t_digest<'a, F, G, T>(compression_param: T) -> Box<dyn Fn(&[T]) -> TDigest<F, G, T> + 'a>
-// where
-//     T: Float + Send + Sync + NumAssignOps + 'a,
-//     F: Fn(T, T, T) -> T,
-//     G: Fn(T, T, T) -> T,
-// {
-//     Box::new(move |dataset: &[T]| {
-//         let mut digest = TDigest::new(
-//             scale_functions::k2,
-//             scale_functions::inv_k2,
-//             compression_param,
-//         );
-//         digest.add_buffer(dataset);
-//         digest
-//     })
-// }
+fn values_from_quantiles<T>(dataset: &[T], quantiles: &[T]) -> Vec<T>
+where
+    T: Float,
+{
+    let mut digest = LinearDigest::new();
+    digest.add_buffer(dataset);
+    quantiles
+        .iter()
+        .map(|quantile| digest.est_value_at_quantile(*quantile))
+        .collect()
+}
 
 fn value_error_against_quantile<T>()
 where
@@ -505,6 +505,7 @@ where
     let t_digest_param = T::from(6000.0).unwrap();
 
     let input_size = 100_000;
+    let quantiles = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 0.2];
     let rc_sketch_mem_size = {
         let digest = create_rcsketch(rcsketch_param)(&gen_uniform_tan_vec(input_size));
         println!("{:?}", digest.buffers);
@@ -515,76 +516,84 @@ where
         digest.owned_size()
     };
 
-    let mut series = Vec::new();
+    for (dist_name, dataset_func) in &get_distributions() {
+        let mut series = Vec::new();
 
-    let mut s = Vec::new();
-    for i in &[1e-5, 1e-4, 1e-3, 1e-2, 1e-1] {
-        let accuracy_measurements = sample_digest_accuracy(
-            create_rcsketch(rcsketch_param),
-            || gen_uniform_tan_vec(input_size),
-            test_func(T::from(*i).unwrap()),
-            |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
-            100,
+        let mut s = Vec::new();
+        for i in &quantiles {
+            let accuracy_measurements = sample_digest_accuracy(
+                create_rcsketch(rcsketch_param),
+                || dataset_func(input_size),
+                test_func(T::from(*i).unwrap()),
+                |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
+                100,
+            )
+            .unwrap();
+            s.push((T::from(*i).unwrap(), accuracy_measurements));
+        }
+
+        series.push(Line {
+            name: format!("RC Sketch ({} bytes)", rc_sketch_mem_size),
+            datapoints: s,
+            colour: &RED,
+            marker: None,
+        });
+
+        let mut s = Vec::new();
+        for i in &quantiles {
+            let accuracy_measurements = sample_digest_accuracy(
+                create_compact_avg_rcsketch(rcsketch_param),
+                || dataset_func(input_size),
+                test_func(T::from(*i).unwrap()),
+                |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
+                100,
+            )
+            .unwrap();
+            s.push((T::from(*i).unwrap(), accuracy_measurements));
+        }
+
+        series.push(Line {
+            name: format!("RC Sketch avg compaction ({} bytes)", rc_sketch_mem_size),
+            datapoints: s,
+            colour: &YELLOW,
+            marker: None,
+        });
+
+        let mut s = Vec::new();
+        for i in &quantiles {
+            let accuracy_measurements = sample_digest_accuracy(
+                create_t_digest(t_digest_param),
+                || dataset_func(input_size),
+                test_func(T::from(*i).unwrap()),
+                |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
+                100,
+            )
+            .unwrap();
+            s.push((T::from(*i).unwrap(), accuracy_measurements));
+        }
+
+        series.push(Line {
+            name: format!("t-Digest ({} bytes)", t_digest_mem_size),
+            datapoints: s,
+            colour: &BLUE,
+            marker: None,
+        });
+
+        plot_box_plot_graph(
+            &format!(
+                "Error against input for value estimate at quantile. Dist: {}",
+                dist_name
+            ),
+            series,
+            &Path::new(&format!(
+                "plots/acc_vs_input_est_value_from_quantile_{}.png",
+                dist_name.to_lowercase().replace(" ", "_")
+            )),
+            "Quantile",
+            "Relative Error (ppm)",
         )
         .unwrap();
-        s.push((T::from(*i).unwrap(), accuracy_measurements));
     }
-
-    series.push(Line {
-        name: format!("RC Sketch ({} bytes)", rc_sketch_mem_size),
-        datapoints: s,
-        colour: &RED,
-        marker: None,
-    });
-
-    let mut s = Vec::new();
-    for i in &[1e-5, 1e-4, 1e-3, 1e-2, 1e-1] {
-        let accuracy_measurements = sample_digest_accuracy(
-            create_compact_avg_rcsketch(rcsketch_param),
-            || gen_uniform_tan_vec(input_size),
-            test_func(T::from(*i).unwrap()),
-            |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
-            100,
-        )
-        .unwrap();
-        s.push((T::from(*i).unwrap(), accuracy_measurements));
-    }
-
-    series.push(Line {
-        name: format!("RC Sketch avg compaction ({} bytes)", rc_sketch_mem_size),
-        datapoints: s,
-        colour: &YELLOW,
-        marker: None,
-    });
-
-    let mut s = Vec::new();
-    for i in &[1e-5, 1e-4, 1e-3, 1e-2, 1e-1] {
-        let accuracy_measurements = sample_digest_accuracy(
-            create_t_digest(t_digest_param),
-            || gen_uniform_tan_vec(input_size),
-            test_func(T::from(*i).unwrap()),
-            |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
-            100,
-        )
-        .unwrap();
-        s.push((T::from(*i).unwrap(), accuracy_measurements));
-    }
-
-    series.push(Line {
-        name: format!("t-Digest ({} bytes)", t_digest_mem_size),
-        datapoints: s,
-        colour: &BLUE,
-        marker: None,
-    });
-
-    plot_box_plot_graph(
-        "Error against input for value estimate at quantile",
-        series,
-        &Path::new("plots/acc_vs_input_est_value_from_quantile.png"),
-        "Quantile",
-        "Relative Error (ppm)",
-    )
-    .unwrap();
 }
 
 fn quantile_error_against_value<T>()
@@ -622,9 +631,10 @@ where
         }
     };
 
-    let test_values = [
-        -10.0, -9.0, -8.0, -7.0, -6.0, -5.0, -4.0, -3.0, -2.0, -1.0, -0.5,
-    ];
+    let test_quantiles: Vec<T> = [1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3, 1e-2, 5e-2, 1e-1]
+        .iter()
+        .map(|quantile| T::from(*quantile).unwrap())
+        .collect();
     // let mut x = gen_uniform_exp_vec(10000, T::from(1.0).unwrap());
     // x.sort_by(|a, b| a.partial_cmp(b).unwrap());
     // println!("{:?}", x);
@@ -642,76 +652,84 @@ where
         digest.owned_size()
     };
 
-    let mut series = Vec::new();
+    for (dist_name, dataset_func) in &get_distributions() {
+        let test_values = values_from_quantiles(&dataset_func(input_size), &test_quantiles);
+        let mut series = Vec::new();
 
-    let mut s = Vec::new();
-    for i in &test_values {
-        let accuracy_measurements = sample_digest_accuracy(
-            create_rcsketch(rcsketch_param),
-            || gen_uniform_exp_vec(input_size, T::from(1.0).unwrap()),
-            test_func(T::from(*i).unwrap()),
-            |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
-            100,
+        let mut s = Vec::new();
+        for i in &test_values {
+            let accuracy_measurements = sample_digest_accuracy(
+                create_rcsketch(rcsketch_param),
+                || dataset_func(input_size),
+                test_func(T::from(*i).unwrap()),
+                |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
+                100,
+            )
+            .unwrap();
+            s.push((T::from(*i).unwrap(), accuracy_measurements));
+        }
+
+        series.push(Line {
+            name: format!("RCSketch ({} bytes)", rc_sketch_mem_size),
+            datapoints: s,
+            colour: &RED,
+            marker: None,
+        });
+
+        let mut s = Vec::new();
+        for i in &test_values {
+            let accuracy_measurements = sample_digest_accuracy(
+                create_compact_avg_rcsketch(rcsketch_param),
+                || dataset_func(input_size),
+                test_func(T::from(*i).unwrap()),
+                |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
+                100,
+            )
+            .unwrap();
+            s.push((T::from(*i).unwrap(), accuracy_measurements));
+        }
+
+        series.push(Line {
+            name: format!("RCSketch avg compaction ({} bytes)", rc_sketch_mem_size),
+            datapoints: s,
+            colour: &YELLOW,
+            marker: None,
+        });
+
+        let mut s = Vec::new();
+        for i in &test_values {
+            let accuracy_measurements = sample_digest_accuracy(
+                create_t_digest(t_digest_param),
+                || dataset_func(input_size),
+                test_func(T::from(*i).unwrap()),
+                |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
+                100,
+            )
+            .unwrap();
+            s.push((T::from(*i).unwrap(), accuracy_measurements));
+        }
+
+        series.push(Line {
+            name: format!("t-Digest ({} bytes)", t_digest_mem_size),
+            datapoints: s,
+            colour: &BLUE,
+            marker: None,
+        });
+        plot_box_plot_graph(
+            &format!(
+                "Error against input for quantile estimate at value. Dist = {}",
+                dist_name
+            ),
+            series,
+            &Path::new(&format!(
+                "plots/acc_vs_input_est_quantile_from_value_{}.png",
+                dist_name.to_lowercase().replace(" ", "_")
+            )),
+            "Value",
+            "Relative Error (ppm)",
         )
         .unwrap();
-        s.push((T::from(*i).unwrap(), accuracy_measurements));
     }
-
-    series.push(Line {
-        name: format!("RCSketch ({} bytes)", rc_sketch_mem_size),
-        datapoints: s,
-        colour: &RED,
-        marker: None,
-    });
-
-    let mut s = Vec::new();
-    for i in &test_values {
-        let accuracy_measurements = sample_digest_accuracy(
-            create_compact_avg_rcsketch(rcsketch_param),
-            || gen_uniform_exp_vec(input_size, T::from(1.0).unwrap()),
-            test_func(T::from(*i).unwrap()),
-            |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
-            100,
-        )
-        .unwrap();
-        s.push((T::from(*i).unwrap(), accuracy_measurements));
-    }
-
-    series.push(Line {
-        name: format!("RCSketch avg compaction ({} bytes)", rc_sketch_mem_size),
-        datapoints: s,
-        colour: &YELLOW,
-        marker: None,
-    });
-
-    let mut s = Vec::new();
-    for i in &test_values {
-        let accuracy_measurements = sample_digest_accuracy(
-            create_t_digest(t_digest_param),
-            || gen_uniform_exp_vec(input_size, T::from(1.0).unwrap()),
-            test_func(T::from(*i).unwrap()),
-            |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
-            100,
-        )
-        .unwrap();
-        s.push((T::from(*i).unwrap(), accuracy_measurements));
-    }
-
-    series.push(Line {
-        name: format!("t-Digest ({} bytes)", t_digest_mem_size),
-        datapoints: s,
-        colour: &BLUE,
-        marker: None,
-    });
-
-    plot_box_plot_graph(
-        "Error against input for quantile estimate at value",
-        series,
-        &Path::new("plots/acc_vs_input_est_quantile_from_value.png"),
-        "Value",
-        "Relative Error (ppm)",
-    )
-    .unwrap();
 }
 
 fn plot_error_against_mem_usage<T>()
@@ -771,64 +789,72 @@ where
         digest.owned_size()
     };
 
-    let mut series = Vec::new();
+    for (dist_name, dataset_func) in &get_distributions() {
+        let mut series = Vec::new();
 
-    for (quantile, marker) in quantiles {
-        let mut s = Vec::new();
-        for rcsketch_param in &rc_test_values {
-            let accuracy_measurements = sample_digest_accuracy(
-                create_rcsketch(*rcsketch_param),
-                || gen_uniform_exp_vec(input_size, T::from(1.0).unwrap()),
-                test_func(quantile),
-                |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
-                100,
-            )
-            .unwrap();
-            s.push((
-                T::from(rc_sketch_mem_size(*rcsketch_param)).unwrap(),
-                accuracy_measurements,
-            ));
+        for (quantile, marker) in &quantiles {
+            let mut s = Vec::new();
+            for rcsketch_param in &rc_test_values {
+                let accuracy_measurements = sample_digest_accuracy(
+                    create_rcsketch(*rcsketch_param),
+                    || dataset_func(input_size),
+                    test_func(*quantile),
+                    |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
+                    100,
+                )
+                .unwrap();
+                s.push((
+                    T::from(rc_sketch_mem_size(*rcsketch_param)).unwrap(),
+                    accuracy_measurements,
+                ));
+            }
+
+            series.push(Line {
+                name: format!("RCSketch, q = 1e{:?}", quantile.log10().to_i32().unwrap()),
+                datapoints: s,
+                colour: &RED,
+                marker: Some(marker.clone()),
+            });
+
+            let mut s = Vec::new();
+            for t_digest_param in &t_digest_test_values {
+                let accuracy_measurements = sample_digest_accuracy(
+                    create_t_digest(*t_digest_param),
+                    || dataset_func(input_size),
+                    test_func(*quantile),
+                    |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
+                    100,
+                )
+                .unwrap();
+                s.push((
+                    T::from(t_digest_mem_size(*t_digest_param)).unwrap(),
+                    accuracy_measurements,
+                ));
+            }
+
+            series.push(Line {
+                name: format!("t-Digest, q = 1e{:?}", quantile.log10().to_i32().unwrap()),
+                datapoints: s,
+                colour: &BLUE,
+                marker: Some(marker.clone()),
+            });
         }
-
-        series.push(Line {
-            name: format!("RCSketch, q = 1e{:?}", quantile.log10().to_i32().unwrap()),
-            datapoints: s,
-            colour: &RED,
-            marker: Some(marker.clone()),
-        });
-
-        let mut s = Vec::new();
-        for t_digest_param in &t_digest_test_values {
-            let accuracy_measurements = sample_digest_accuracy(
-                create_t_digest(*t_digest_param),
-                || gen_uniform_exp_vec(input_size, T::from(1.0).unwrap()),
-                test_func(quantile),
-                |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
-                100,
-            )
-            .unwrap();
-            s.push((
-                T::from(t_digest_mem_size(*t_digest_param)).unwrap(),
-                accuracy_measurements,
-            ));
-        }
-
-        series.push(Line {
-            name: format!("t-Digest, q = 1e{:?}", quantile.log10().to_i32().unwrap()),
-            datapoints: s,
-            colour: &BLUE,
-            marker: Some(marker.clone()),
-        });
+        plot_line_graph(
+            &format!(
+                "Error vs memory usage for quantile estimate at value. Dist: {}",
+                dist_name
+            ),
+            series,
+            &Path::new(&format!(
+                "plots/err_vs_mem_usage_for_est_quantile_from_value_{}.png",
+                dist_name.to_lowercase().replace(" ", "_")
+            )),
+            "Memory (bytes)",
+            "Relative Error (ppm)",
+            false,
+        )
+        .unwrap();
     }
-    plot_line_graph(
-        "Error at against memory usage for quantile estimate at value",
-        series,
-        &Path::new("plots/err_vs_mem_usage_for_est_quantile_from_value.png"),
-        "Memory (bytes)",
-        "Relative Error (ppm)",
-        false,
-    )
-    .unwrap();
 }
 
 fn plot_error_against_input_size<T>()
@@ -882,58 +908,65 @@ where
     //     digest.owned_size()
     // };
 
-    let mut series = Vec::new();
+    for (dist_name, dataset_func) in &get_distributions() {
+        let mut series = Vec::new();
+        for (quantile, marker) in &quantiles {
+            let mut s = Vec::new();
+            for input_size in &input_sizes {
+                let accuracy_measurements = sample_digest_accuracy(
+                    create_rcsketch(rcsketch_param),
+                    || dataset_func(*input_size),
+                    test_func(*quantile),
+                    |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
+                    100,
+                )
+                .unwrap();
+                s.push((T::from(*input_size).unwrap(), accuracy_measurements));
+            }
 
-    for (quantile, marker) in quantiles {
-        let mut s = Vec::new();
-        for input_size in &input_sizes {
-            let accuracy_measurements = sample_digest_accuracy(
-                create_rcsketch(rcsketch_param),
-                || gen_uniform_exp_vec(*input_size, T::from(1.0).unwrap()),
-                test_func(quantile),
-                |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
-                100,
-            )
-            .unwrap();
-            s.push((T::from(*input_size).unwrap(), accuracy_measurements));
+            series.push(Line {
+                name: format!("RCSketch, q = 1e{:?}", quantile.log10().to_i32().unwrap()),
+                datapoints: s,
+                colour: &RED,
+                marker: Some(marker.clone()),
+            });
+
+            let mut s = Vec::new();
+            for input_size in &input_sizes {
+                let accuracy_measurements = sample_digest_accuracy(
+                    create_t_digest(t_digest_param),
+                    || dataset_func(*input_size),
+                    test_func(*quantile),
+                    |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
+                    100,
+                )
+                .unwrap();
+                s.push((T::from(*input_size).unwrap(), accuracy_measurements));
+            }
+
+            series.push(Line {
+                name: format!("t-Digest, q = 1e{:?}", quantile.log10().to_i32().unwrap()),
+                datapoints: s,
+                colour: &BLUE,
+                marker: Some(marker.clone()),
+            });
         }
-
-        series.push(Line {
-            name: format!("RCSketch, q = 1e{:?}", quantile.log10().to_i32().unwrap()),
-            datapoints: s,
-            colour: &RED,
-            marker: Some(marker.clone()),
-        });
-
-        let mut s = Vec::new();
-        for input_size in &input_sizes {
-            let accuracy_measurements = sample_digest_accuracy(
-                create_t_digest(t_digest_param),
-                || gen_uniform_exp_vec(*input_size, T::from(1.0).unwrap()),
-                test_func(quantile),
-                |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
-                100,
-            )
-            .unwrap();
-            s.push((T::from(*input_size).unwrap(), accuracy_measurements));
-        }
-
-        series.push(Line {
-            name: format!("t-Digest, q = 1e{:?}", quantile.log10().to_i32().unwrap()),
-            datapoints: s,
-            colour: &BLUE,
-            marker: Some(marker.clone()),
-        });
+        plot_line_graph(
+            &format!(
+                "Error at against input size for value estimate at quantile. Dist: {}",
+                dist_name
+            ),
+            series,
+            &Path::new(&format!(
+                "plots/err_vs_input_for_est_value_from_quantile_{}.png",
+                dist_name.to_lowercase().replace(" ", "_")
+            )),
+            "Input size",
+            "Relative Error (ppm)",
+            false,
+        )
+        .unwrap();
     }
-    plot_line_graph(
-        "Error at against input size for value estimate at quantile",
-        series,
-        &Path::new("plots/err_vs_input_for_est_value_from_quantile.png"),
-        "Input size",
-        "Relative Error (ppm)",
-        false,
-    )
-    .unwrap();
 }
 
 fn plot_memory_usage_against_compression_parameter<T>()
@@ -1141,8 +1174,8 @@ fn main() {
     quantile_error_against_value::<f32>();
     // determine_required_parameter::<f32>();
     // determine_required_parameter::<f64>();
-    // plot_error_against_mem_usage::<f32>();
-    // plot_error_against_input_size::<f32>();
+    plot_error_against_mem_usage::<f32>();
+    plot_error_against_input_size::<f32>();
     plot_memory_usage_against_compression_parameter::<f32>();
     plot_memory_usage_against_input_size::<f32>();
     println!("Complete");

@@ -61,6 +61,29 @@ where
         .collect();
 }
 
+/// Generate a vector of values from a reversed growing blocks distribution
+/// See: Accuracy plots > input at https://datasketches.apache.org/docs/Quantiles/KllSketchVsTDigest.html
+/// # Arguments
+/// `size` Size of the vector to generate
+pub fn gen_reverse_growing_blocks_vec<F>(size: i32) -> Vec<F>
+where
+    F: Float,
+{
+    let mut rng = rand::thread_rng();
+    let uniform = Uniform::from(0.0..1.0);
+    let mut increment_prob = 0.001;
+    let mut val = F::from(1.0).unwrap();
+    let mut elements = Vec::new();
+    for _ in 0..size {
+        if uniform.sample(&mut rng) <= increment_prob {
+            increment_prob = increment_prob * 0.98;
+            val = val - F::from(1.0).unwrap();
+        }
+        elements.push(val);
+    }
+    elements
+}
+
 /// Generate a vector of 1-weighted centroids from a uniform distribution
 /// # Arguments
 /// `size` Size of the vector to generate
