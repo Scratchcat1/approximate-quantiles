@@ -898,7 +898,14 @@ where
     let rcsketch_param = T::from(20.0).unwrap();
     let t_digest_param = T::from(10000.0).unwrap();
 
-    let input_sizes = [10_000, 100_000, 1_000_000];
+//    let input_sizes = [10_000, 100_000, 1_000_000];
+let input_sizes = [
+10_000, 200_000, 40_000, 60_000, 80_000  
+,100_000, 200_000, 400_000, 600_000, 800_000  
+,1_000_000, 2_000_000, 4_000_000, 6_000_000, 8_000_000 
+,10_000_000, 20_000_000, 40_000_000, 60_000_000, 80_000_000, 100_000_000
+];
+
     // let rc_sketch_mem_size = |input_size| {
     //     let digest = create_rcsketch(rcsketch_param)(&gen_uniform_tan_vec(input_size));
     //     digest.owned_size()
@@ -1159,13 +1166,6 @@ where
     if actual == T::from(0.0).unwrap() {
         return measured.abs();
     }
-    println!(
-        "Error {} {} {} {}",
-        measured.to_f64().unwrap(),
-        actual.to_f64().unwrap(),
-        (measured - actual).to_f64().unwrap(),
-        ((measured - actual).abs() / actual.abs()).to_f64().unwrap()
-    );
     (measured - actual).abs() / actual.abs()
 }
 
