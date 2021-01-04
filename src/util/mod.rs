@@ -77,7 +77,7 @@ where
     for _ in 0..size {
         if uniform.sample(&mut rng) <= increment_prob {
             increment_prob = increment_prob * 0.98;
-            val = val - F::from(1.0).unwrap();
+            val = val + F::from(1.0).unwrap();
         }
         elements.push(val);
     }

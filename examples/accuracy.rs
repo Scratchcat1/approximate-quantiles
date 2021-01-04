@@ -12,6 +12,8 @@ use plotters::prelude::*;
 use std::error::Error;
 use std::path::Path;
 
+const T_DIGEST_CHUNK_SIZE: usize = 2_000;
+
 pub struct Line<'a, T>
 where
     T: Float,
@@ -81,7 +83,16 @@ where
         .map(|s| {
             s.datapoints
                 .iter()
-                .map(|dp| dp.1.iter().map(|x| *x as f32).collect::<Vec<f32>>())
+                .map(|dp| {
+                    let quartiles = Quartiles::new(&dp.1);
+                    let outlier_dist = 1.5 * quartiles.values()[3] - quartiles.values()[1];
+                    let upper_outlier_boundary = quartiles.values()[3] + outlier_dist;
+                    let lower_outlier_boundary = quartiles.values()[1] - outlier_dist;
+                    dp.1.iter()
+                        .map(|x| *x as f32)
+                        .filter(|x| *x <= upper_outlier_boundary && *x >= lower_outlier_boundary)
+                        .collect::<Vec<f32>>()
+                })
                 .flatten()
                 .collect::<Vec<f32>>()
         })
@@ -115,7 +126,7 @@ where
         .y_desc(y_label)
         .draw()?;
 
-    let mut offsets = (-12..).step_by(24);
+    let mut offsets = (-24..).step_by(24);
     series.iter().for_each(|s| {
         let current_offset = offsets.next().unwrap();
         chart
@@ -144,7 +155,7 @@ where
 
 pub fn plot_line_graph<T>(
     title: &str,
-    series: Vec<Line<T>>,
+    mut series: Vec<Line<T>>,
     output_path: &Path,
     x_label: &str,
     y_label: &str,
@@ -157,6 +168,12 @@ where
     let marker_size = 14;
 
     root.fill(&WHITE)?;
+
+    // Ensure the datapoints are in order to avoid the line doubling back.
+    series
+        .iter_mut()
+        .for_each(|s| s.datapoints.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap()));
+
     let min_x = series
         .iter()
         .map(|s| {
@@ -409,7 +426,9 @@ where
 
     let create_t_digest = |dataset: &[T], param: T| {
         let mut digest = TDigest::new(&scale_functions::k2, &scale_functions::inv_k2, param);
-        digest.add_buffer(dataset);
+        dataset
+            .chunks(T_DIGEST_CHUNK_SIZE)
+            .for_each(|chunk| digest.add_buffer(chunk));
         digest
     };
 
@@ -496,7 +515,9 @@ where
                 &scale_functions::inv_k2,
                 compression_param,
             );
-            digest.add_buffer(dataset);
+            dataset
+                .chunks(T_DIGEST_CHUNK_SIZE)
+                .for_each(|chunk| digest.add_buffer(chunk));
             digest
         }
     };
@@ -505,10 +526,9 @@ where
     let t_digest_param = T::from(6000.0).unwrap();
 
     let input_size = 100_000;
-    let quantiles = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 0.2];
+    let quantiles = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 0.2, 0.5];
     let rc_sketch_mem_size = {
         let digest = create_rcsketch(rcsketch_param)(&gen_uniform_tan_vec(input_size));
-        println!("{:?}", digest.buffers);
         digest.owned_size()
     };
     let t_digest_mem_size = {
@@ -626,12 +646,14 @@ where
                 &scale_functions::inv_k2,
                 compression_param,
             );
-            digest.add_buffer(dataset);
+            dataset
+                .chunks(T_DIGEST_CHUNK_SIZE)
+                .for_each(|chunk| digest.add_buffer(chunk));
             digest
         }
     };
 
-    let test_quantiles: Vec<T> = [1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3, 1e-2, 5e-2, 1e-1]
+    let test_quantiles: Vec<T> = [1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3, 1e-2, 5e-2, 1e-1, 0.2]
         .iter()
         .map(|quantile| T::from(*quantile).unwrap())
         .collect();
@@ -654,6 +676,7 @@ where
 
     for (dist_name, dataset_func) in &get_distributions() {
         let test_values = values_from_quantiles(&dataset_func(input_size), &test_quantiles);
+        println!("{:?}", test_values);
         let mut series = Vec::new();
 
         let mut s = Vec::new();
@@ -754,7 +777,9 @@ where
                 &scale_functions::inv_k2,
                 compression_param,
             );
-            digest.add_buffer(dataset);
+            dataset
+                .chunks(T_DIGEST_CHUNK_SIZE)
+                .for_each(|chunk| digest.add_buffer(chunk));
             digest
         }
     };
@@ -879,7 +904,9 @@ where
                 &scale_functions::inv_k2,
                 compression_param,
             );
-            digest.add_buffer(dataset);
+            dataset
+                .chunks(T_DIGEST_CHUNK_SIZE)
+                .for_each(|chunk| digest.add_buffer(chunk));
             digest
         }
     };
@@ -898,13 +925,30 @@ where
     let rcsketch_param = T::from(20.0).unwrap();
     let t_digest_param = T::from(10000.0).unwrap();
 
-//    let input_sizes = [10_000, 100_000, 1_000_000];
-let input_sizes = [
-10_000, 200_000, 40_000, 60_000, 80_000  
-,100_000, 200_000, 400_000, 600_000, 800_000  
-,1_000_000, 2_000_000, 4_000_000, 6_000_000, 8_000_000 
-,10_000_000, 20_000_000, 40_000_000, 60_000_000, 80_000_000, 100_000_000
-];
+    //    let input_sizes = [10_000, 100_000, 1_000_000];
+    let input_sizes = [
+        10_000,
+        200_000,
+        40_000,
+        60_000,
+        80_000,
+        100_000,
+        200_000,
+        400_000,
+        600_000,
+        800_000,
+        1_000_000,
+        2_000_000,
+        4_000_000,
+        6_000_000,
+        8_000_000,
+        10_000_000,
+        20_000_000,
+        40_000_000,
+        60_000_000,
+        80_000_000,
+        100_000_000,
+    ];
 
     // let rc_sketch_mem_size = |input_size| {
     //     let digest = create_rcsketch(rcsketch_param)(&gen_uniform_tan_vec(input_size));
@@ -988,7 +1032,9 @@ where
 
     let create_t_digest = |dataset: &[T], param: T| {
         let mut digest = TDigest::new(&scale_functions::k2, &scale_functions::inv_k2, param);
-        digest.add_buffer(dataset);
+        dataset
+            .chunks(T_DIGEST_CHUNK_SIZE)
+            .for_each(|chunk| digest.add_buffer(chunk));
         digest
     };
 
@@ -1079,7 +1125,9 @@ where
 
     let create_t_digest = |dataset: &[T], param: T| {
         let mut digest = TDigest::new(&scale_functions::k2, &scale_functions::inv_k2, param);
-        digest.add_buffer(dataset);
+        dataset
+            .chunks(T_DIGEST_CHUNK_SIZE)
+            .for_each(|chunk| digest.add_buffer(chunk));
         digest
     };
 
@@ -1175,7 +1223,7 @@ fn main() {
     // determine_required_parameter::<f32>();
     // determine_required_parameter::<f64>();
     plot_error_against_mem_usage::<f32>();
-    plot_error_against_input_size::<f32>();
+    // plot_error_against_input_size::<f32>();
     plot_memory_usage_against_compression_parameter::<f32>();
     plot_memory_usage_against_input_size::<f32>();
     println!("Complete");
