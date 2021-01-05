@@ -3,7 +3,7 @@ use approximate_quantiles::t_digest::{scale_functions, t_digest::TDigest};
 use approximate_quantiles::traits::{Digest, OwnedSize};
 use approximate_quantiles::util::linear_digest::LinearDigest;
 use approximate_quantiles::util::{
-    gen_reverse_growing_blocks_vec, gen_uniform_exp_vec, gen_uniform_tan_vec, gen_uniform_vec,
+    gen_growing_blocks_vec, gen_uniform_exp_vec, gen_uniform_tan_vec, gen_uniform_vec,
     opt_accuracy_parameter, sample_digest_accuracy,
 };
 use num_traits::{Float, NumAssignOps};
@@ -98,7 +98,7 @@ where
         })
         .flatten()
         .collect();
-    println!("{:?}", y_values);
+    // println!("{:?}", y_values);
     let y_values_range = fitting_range(y_values.iter());
     let x_values: Vec<f64> = series[0..1]
         .iter()
@@ -108,7 +108,7 @@ where
 
     // println!("{} {} {} {}", min_x, max_x, min_y, max_y);
     // let mut colors = (0..).map(Palette99::pick);
-    println!("{:?}", &y_values_range);
+    // println!("{:?}", &y_values_range);
     let mut chart = ChartBuilder::on(&root)
         .margin(15)
         .margin_right(30)
@@ -162,7 +162,7 @@ pub fn plot_line_graph<T>(
     show_error_bars: bool,
 ) -> Result<(), Box<dyn Error>>
 where
-    T: Float,
+    T: Float + std::fmt::Debug,
 {
     let root = BitMapBackend::new(output_path, (1600, 1200)).into_drawing_area();
     let marker_size = 14;
@@ -279,6 +279,10 @@ where
             })
             .collect();
 
+        data_stats
+            .iter()
+            .for_each(|ds| println!("{} {} {:?} {:?}", title, s.name, ds.x, ds.y_mean));
+
         let line_element = chart
             .draw_series(LineSeries::new(
                 data_stats.iter().map(|data_stat| {
@@ -369,13 +373,31 @@ where
 {
     vec![
         (
-            "Reverse growing blocks".to_string(),
-            Box::new(|input_size| gen_reverse_growing_blocks_vec(input_size)),
+            "Growing blocks".to_string(),
+            Box::new(|input_size| gen_growing_blocks_vec(input_size)),
         ),
         (
             "Reverse exponential".to_string(),
             Box::new(|input_size| gen_uniform_exp_vec(input_size, F::from(1.0).unwrap())),
         ),
+        (
+            "Uniform".to_string(),
+            Box::new(|input_size| gen_uniform_vec(input_size)),
+        ),
+        (
+            "Tan".to_string(),
+            Box::new(|input_size| gen_uniform_tan_vec(input_size)),
+        ),
+        // Made no impact
+        // (
+        //     "Uniform blocks".to_string(),
+        //     Box::new(|input_size| {
+        //         gen_uniform_vec::<F>(input_size)
+        //             .into_iter()
+        //             .map(|x| (x * F::from(1_000_000.0).unwrap()) / F::from(1_000.0).unwrap())
+        //             .collect()
+        //     }),
+        // ),
     ]
 }
 
@@ -493,6 +515,13 @@ where
     let test_func =
         |quantile: T| move |digest: &mut dyn Digest<T>| digest.est_value_at_quantile(quantile);
 
+    let error_func = |a, b| {
+        T::max(
+            T::from(1.0).unwrap(),
+            relative_error(a, b) * T::from(1e6).unwrap(),
+        )
+    };
+
     let create_rcsketch = |accuracy_param: T| {
         move |dataset: &[T]| {
             let mut digest = RCSketch::new(dataset.len(), accuracy_param.to_usize().unwrap());
@@ -545,7 +574,7 @@ where
                 create_rcsketch(rcsketch_param),
                 || dataset_func(input_size),
                 test_func(T::from(*i).unwrap()),
-                |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
+                error_func,
                 100,
             )
             .unwrap();
@@ -565,7 +594,7 @@ where
                 create_compact_avg_rcsketch(rcsketch_param),
                 || dataset_func(input_size),
                 test_func(T::from(*i).unwrap()),
-                |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
+                error_func,
                 100,
             )
             .unwrap();
@@ -585,7 +614,7 @@ where
                 create_t_digest(t_digest_param),
                 || dataset_func(input_size),
                 test_func(T::from(*i).unwrap()),
-                |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
+                error_func,
                 100,
             )
             .unwrap();
@@ -622,6 +651,13 @@ where
 {
     let test_func =
         |value: T| move |digest: &mut dyn Digest<T>| digest.est_quantile_at_value(value);
+
+    let error_func = |a, b| {
+        T::max(
+            T::from(1.0).unwrap(),
+            relative_error(a, b) * T::from(1e6).unwrap(),
+        )
+    };
 
     let create_rcsketch = |accuracy_param: T| {
         move |dataset: &[T]| {
@@ -685,7 +721,7 @@ where
                 create_rcsketch(rcsketch_param),
                 || dataset_func(input_size),
                 test_func(T::from(*i).unwrap()),
-                |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
+                error_func,
                 100,
             )
             .unwrap();
@@ -705,7 +741,7 @@ where
                 create_compact_avg_rcsketch(rcsketch_param),
                 || dataset_func(input_size),
                 test_func(T::from(*i).unwrap()),
-                |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
+                error_func,
                 100,
             )
             .unwrap();
@@ -725,7 +761,7 @@ where
                 create_t_digest(t_digest_param),
                 || dataset_func(input_size),
                 test_func(T::from(*i).unwrap()),
-                |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
+                error_func,
                 100,
             )
             .unwrap();
@@ -761,6 +797,13 @@ where
 {
     let test_func =
         |value: T| move |digest: &mut dyn Digest<T>| digest.est_value_at_quantile(value);
+
+    let error_func = |a, b| {
+        T::max(
+            T::from(1.0).unwrap(),
+            relative_error(a, b) * T::from(1e6).unwrap(),
+        )
+    };
 
     let create_rcsketch = |accuracy_param: T| {
         move |dataset: &[T]| {
@@ -824,7 +867,7 @@ where
                     create_rcsketch(*rcsketch_param),
                     || dataset_func(input_size),
                     test_func(*quantile),
-                    |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
+                    error_func,
                     100,
                 )
                 .unwrap();
@@ -847,7 +890,7 @@ where
                     create_t_digest(*t_digest_param),
                     || dataset_func(input_size),
                     test_func(*quantile),
-                    |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
+                    error_func,
                     100,
                 )
                 .unwrap();
@@ -889,6 +932,13 @@ where
     let test_func =
         |value: T| move |digest: &mut dyn Digest<T>| digest.est_value_at_quantile(value);
 
+    let error_func = |a, b| {
+        T::max(
+            T::from(1.0).unwrap(),
+            relative_error(a, b) * T::from(1e6).unwrap(),
+        )
+    };
+
     let create_rcsketch = |accuracy_param: T| {
         move |dataset: &[T]| {
             let mut digest = RCSketch::new(dataset.len(), accuracy_param.to_usize().unwrap());
@@ -928,7 +978,7 @@ where
     //    let input_sizes = [10_000, 100_000, 1_000_000];
     let input_sizes = [
         10_000,
-        200_000,
+        20_000,
         40_000,
         60_000,
         80_000,
@@ -948,6 +998,9 @@ where
         60_000_000,
         80_000_000,
         100_000_000,
+        200_000_000,
+        300_000_000,
+        400_000_000,
     ];
 
     // let rc_sketch_mem_size = |input_size| {
@@ -968,8 +1021,8 @@ where
                     create_rcsketch(rcsketch_param),
                     || dataset_func(*input_size),
                     test_func(*quantile),
-                    |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
-                    100,
+                    error_func,
+                    10,
                 )
                 .unwrap();
                 s.push((T::from(*input_size).unwrap(), accuracy_measurements));
@@ -988,8 +1041,8 @@ where
                     create_t_digest(t_digest_param),
                     || dataset_func(*input_size),
                     test_func(*quantile),
-                    |a, b| relative_error(a, b) * T::from(1e6).unwrap(),
-                    100,
+                    error_func,
+                    10,
                 )
                 .unwrap();
                 s.push((T::from(*input_size).unwrap(), accuracy_measurements));
@@ -1022,7 +1075,7 @@ where
 
 fn plot_memory_usage_against_compression_parameter<T>()
 where
-    T: Float + Sync + Send + NumAssignOps,
+    T: Float + Sync + Send + NumAssignOps + std::fmt::Debug,
 {
     let create_rcsketch = |dataset: &[T], param: T| {
         let mut digest = RCSketch::new(dataset.len(), param.to_usize().unwrap());
@@ -1115,7 +1168,7 @@ where
 
 fn plot_memory_usage_against_input_size<T>()
 where
-    T: Float + Sync + Send + NumAssignOps,
+    T: Float + Sync + Send + NumAssignOps + std::fmt::Debug,
 {
     let create_rcsketch = |dataset: &[T], param: T| {
         let mut digest = RCSketch::new(dataset.len(), param.to_usize().unwrap());
@@ -1218,13 +1271,13 @@ where
 }
 
 fn main() {
-    value_error_against_quantile::<f32>();
-    quantile_error_against_value::<f32>();
+    // value_error_against_quantile::<f32>();
+    // quantile_error_against_value::<f32>();
     // determine_required_parameter::<f32>();
     // determine_required_parameter::<f64>();
     plot_error_against_mem_usage::<f32>();
     // plot_error_against_input_size::<f32>();
-    plot_memory_usage_against_compression_parameter::<f32>();
-    plot_memory_usage_against_input_size::<f32>();
+    // plot_memory_usage_against_compression_parameter::<f32>();
+    // plot_memory_usage_against_input_size::<f32>();
     println!("Complete");
 }

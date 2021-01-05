@@ -61,11 +61,11 @@ where
         .collect();
 }
 
-/// Generate a vector of values from a reversed growing blocks distribution
+/// Generate a vector of values from a growing blocks distribution
 /// See: Accuracy plots > input at https://datasketches.apache.org/docs/Quantiles/KllSketchVsTDigest.html
 /// # Arguments
 /// `size` Size of the vector to generate
-pub fn gen_reverse_growing_blocks_vec<F>(size: i32) -> Vec<F>
+pub fn gen_growing_blocks_vec<F>(size: i32) -> Vec<F>
 where
     F: Float,
 {
