@@ -750,7 +750,7 @@ mod test {
         assert_relative_eq!(
             digest.est_value_at_quantile(0.001) / linear_digest.est_value_at_quantile(0.001),
             1.0,
-            epsilon = 0.0075
+            epsilon = 0.01
         );
         assert_relative_eq!(
             digest.est_value_at_quantile(0.01) / linear_digest.est_value_at_quantile(0.01),
@@ -909,17 +909,17 @@ mod test {
         assert_relative_eq!(
             digest.est_quantile_at_value(-250.0) / linear_digest.est_quantile_at_value(-250.0),
             1.0,
-            epsilon = 0.00025
+            epsilon = 0.002
         );
         assert_relative_eq!(
             digest.est_quantile_at_value(0.0) / linear_digest.est_quantile_at_value(0.0),
             1.0,
-            epsilon = 0.00001
+            epsilon = 0.002
         );
         assert_relative_eq!(
             digest.est_quantile_at_value(250.0) / linear_digest.est_quantile_at_value(250.0),
             1.0,
-            epsilon = 0.00001
+            epsilon = 0.002
         );
         assert_relative_eq!(
             digest.est_quantile_at_value(500.0) / linear_digest.est_quantile_at_value(500.0),

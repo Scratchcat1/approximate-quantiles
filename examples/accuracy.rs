@@ -555,7 +555,7 @@ where
     let t_digest_param = T::from(6000.0).unwrap();
 
     let input_size = 100_000;
-    let quantiles = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 0.2, 0.5];
+    let quantiles = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 0.2, 0.4];
     let rc_sketch_mem_size = {
         let digest = create_rcsketch(rcsketch_param)(&gen_uniform_tan_vec(input_size));
         digest.owned_size()
@@ -961,6 +961,20 @@ where
         }
     };
 
+    let create_t_digest_k2n = |compression_param: T| {
+        move |dataset: &[T]| {
+            let mut digest = TDigest::new(
+                &scale_functions::k2n,
+                &scale_functions::inv_k2n,
+                compression_param,
+            );
+            dataset
+                .chunks(T_DIGEST_CHUNK_SIZE)
+                .for_each(|chunk| digest.add_buffer(chunk));
+            digest
+        }
+    };
+
     let quantiles = [
         (1e-5, "X"),
         (1e-4, "▲"),
@@ -1052,6 +1066,29 @@ where
                 name: format!("t-Digest, q = 1e{:?}", quantile.log10().to_i32().unwrap()),
                 datapoints: s,
                 colour: &BLUE,
+                marker: Some(marker.clone()),
+            });
+
+            let mut s = Vec::new();
+            for input_size in &input_sizes {
+                let accuracy_measurements = sample_digest_accuracy(
+                    create_t_digest_k2n(t_digest_param),
+                    || dataset_func(*input_size),
+                    test_func(*quantile),
+                    error_func,
+                    10,
+                )
+                .unwrap();
+                s.push((T::from(*input_size).unwrap(), accuracy_measurements));
+            }
+
+            series.push(Line {
+                name: format!(
+                    "t-Digest k2n, q = 1e{:?}",
+                    quantile.log10().to_i32().unwrap()
+                ),
+                datapoints: s,
+                colour: &CYAN,
                 marker: Some(marker.clone()),
             });
         }
@@ -1275,9 +1312,9 @@ fn main() {
     // quantile_error_against_value::<f32>();
     // determine_required_parameter::<f32>();
     // determine_required_parameter::<f64>();
-    plot_error_against_mem_usage::<f32>();
+    // plot_error_against_mem_usage::<f32>();
     // plot_error_against_input_size::<f32>();
     // plot_memory_usage_against_compression_parameter::<f32>();
-    // plot_memory_usage_against_input_size::<f32>();
+    plot_memory_usage_against_input_size::<f32>();
     println!("Complete");
 }

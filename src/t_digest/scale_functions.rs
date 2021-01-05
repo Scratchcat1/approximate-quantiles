@@ -51,6 +51,28 @@ where
     return x / (F::from(1.0).unwrap() + x);
 }
 
+pub fn k2n<F>(quantile: F, comp_factor: F, n: F) -> F
+where
+    F: Float,
+{
+    let mod_comp_factor = comp_factor * n.log10();
+    (mod_comp_factor
+        / (F::from(4.0).unwrap() * (n / mod_comp_factor).log10() + F::from(24.0).unwrap()))
+        * (quantile / (F::from(1.0).unwrap() - quantile)).log10()
+}
+
+pub fn inv_k2n<F>(scale: F, comp_factor: F, n: F) -> F
+where
+    F: Float,
+{
+    let mod_comp_factor = comp_factor * n.log10();
+    let x = F::from(10.0).unwrap().powf(
+        (scale * (F::from(4.0).unwrap() * (n / mod_comp_factor).log10() + F::from(24.0).unwrap()))
+            / mod_comp_factor,
+    );
+    return x / (F::from(1.0).unwrap() + x);
+}
+
 pub fn k3<F>(quantile: F, comp_factor: F, n: F) -> F
 where
     F: Float,
@@ -82,7 +104,9 @@ where
 
 #[cfg(test)]
 mod scale_functions_test {
-    use crate::t_digest::scale_functions::{inv_k0, inv_k1, inv_k2, inv_k3, k0, k1, k2, k3};
+    use crate::t_digest::scale_functions::{
+        inv_k0, inv_k1, inv_k2, inv_k2n, inv_k3, k0, k1, k2, k2n, k3,
+    };
     use approx::assert_relative_eq;
 
     #[test]
@@ -115,6 +139,14 @@ mod scale_functions_test {
         for i in 0..100 {
             let q = i as f64 / 100.0;
             assert_relative_eq!(inv_k2(k2(q, 10.0, 10.0), 10.0, 10.0), q);
+        }
+    }
+
+    #[test]
+    fn inv_k2n_properties() {
+        for i in 0..100 {
+            let q = i as f64 / 100.0;
+            assert_relative_eq!(inv_k2n(k2n(q, 10.0, 10.0), 10.0, 10.0), q);
         }
     }
 
