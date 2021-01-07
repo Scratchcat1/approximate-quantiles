@@ -55,7 +55,7 @@ pub fn k2n<F>(quantile: F, comp_factor: F, n: F) -> F
 where
     F: Float,
 {
-    let mod_comp_factor = comp_factor * n.log10().powf(F::from(2.0).unwrap());
+    let mod_comp_factor = comp_factor / F::from(10.0).unwrap() * n.log10().powf(F::from(2.0).unwrap());
     (mod_comp_factor
         / (F::from(4.0).unwrap() * (n / mod_comp_factor).log10() + F::from(24.0).unwrap()))
         * (quantile / (F::from(1.0).unwrap() - quantile)).log10()
@@ -65,7 +65,7 @@ pub fn inv_k2n<F>(scale: F, comp_factor: F, n: F) -> F
 where
     F: Float,
 {
-    let mod_comp_factor = comp_factor * n.log10().powf(F::from(2.0).unwrap());
+    let mod_comp_factor = comp_factor / F::from(10.0).unwrap() * n.log10().powf(F::from(2.0).unwrap());
     let x = F::from(10.0).unwrap().powf(
         (scale * (F::from(4.0).unwrap() * (n / mod_comp_factor).log10() + F::from(24.0).unwrap()))
             / mod_comp_factor,
