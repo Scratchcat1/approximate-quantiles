@@ -50,6 +50,10 @@ where
             self.values[target_index]
         };
     }
+
+    fn count(&self) -> u64 {
+        self.values.len() as u64
+    }
 }
 
 #[cfg(test)]

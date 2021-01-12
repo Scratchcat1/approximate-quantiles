@@ -264,6 +264,10 @@ where
         let z2 = last.weight / T::from(2.0).unwrap() - z1;
         return weighted_average(last.mean, z1, self.max, z2);
     }
+
+    fn count(&self) -> u64 {
+        self.total_weight().to_u64().unwrap()
+    }
 }
 
 impl<F, G, T> TDigest<F, G, T>

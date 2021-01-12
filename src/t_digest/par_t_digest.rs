@@ -121,6 +121,10 @@ where
         self.flush();
         self.digest.est_value_at_quantile(quantile)
     }
+
+    fn count(&self) -> u64 {
+        self.digest.count() + self.buffer.len() as u64
+    }
 }
 
 #[cfg(test)]

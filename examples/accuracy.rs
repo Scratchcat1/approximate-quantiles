@@ -12,7 +12,7 @@ use plotters::prelude::*;
 use std::error::Error;
 use std::path::Path;
 
-const T_DIGEST_CHUNK_SIZE: usize = 2_000;
+const T_DIGEST_CHUNK_SIZE: usize = 1_000_000;
 
 pub struct Line<'a, T>
 where
@@ -932,12 +932,17 @@ where
     let test_func =
         |value: T| move |digest: &mut dyn Digest<T>| digest.est_value_at_quantile(value);
 
+    let test_func_f64 =
+        |value: f64| move |digest: &mut dyn Digest<f64>| digest.est_value_at_quantile(value);
+
     let error_func = |a, b| {
         T::max(
             T::from(1.0).unwrap(),
             relative_error(a, b) * T::from(1e6).unwrap(),
         )
     };
+
+    let error_func_f64 = |a, b| f64::max(1.0, relative_error(a, b) * 1e6);
 
     let create_rcsketch = |accuracy_param: T| {
         move |dataset: &[T]| {
@@ -949,6 +954,20 @@ where
 
     let create_t_digest = |compression_param: T| {
         move |dataset: &[T]| {
+            let mut digest = TDigest::new(
+                &scale_functions::k2,
+                &scale_functions::inv_k2,
+                compression_param,
+            );
+            dataset
+                .chunks(T_DIGEST_CHUNK_SIZE)
+                .for_each(|chunk| digest.add_buffer(chunk));
+            digest
+        }
+    };
+
+    let create_t_digest_f64 = |compression_param: f64| {
+        move |dataset: &[f64]| {
             let mut digest = TDigest::new(
                 &scale_functions::k2,
                 &scale_functions::inv_k2,
@@ -987,7 +1006,7 @@ where
     .collect::<Vec<(T, String)>>();
 
     let rcsketch_param = T::from(20.0).unwrap();
-    let t_digest_param = T::from(10000.0).unwrap();
+    let t_digest_param = T::from(6000.0).unwrap();
 
     //    let input_sizes = [10_000, 100_000, 1_000_000];
     let input_sizes = [
@@ -1042,12 +1061,15 @@ where
                 s.push((T::from(*input_size).unwrap(), accuracy_measurements));
             }
 
-            series.push(Line {
-                name: format!("RCSketch, q = 1e{:?}", quantile.log10().to_i32().unwrap()),
-                datapoints: s,
-                colour: &RED,
-                marker: Some(marker.clone()),
-            });
+            series.push(
+                Line {
+                    name: format!("RCSketch, q = 1e{:?}", quantile.log10().to_i32().unwrap()),
+                    datapoints: s,
+                    colour: &RED,
+                    marker: Some(marker.clone()),
+                }
+                .into_line_f64(),
+            );
 
             let mut s = Vec::new();
             for input_size in &input_sizes {
@@ -1062,12 +1084,46 @@ where
                 s.push((T::from(*input_size).unwrap(), accuracy_measurements));
             }
 
-            series.push(Line {
-                name: format!("t-Digest, q = 1e{:?}", quantile.log10().to_i32().unwrap()),
-                datapoints: s,
-                colour: &BLUE,
-                marker: Some(marker.clone()),
-            });
+            series.push(
+                Line {
+                    name: format!("t-Digest, q = 1e{:?}", quantile.log10().to_i32().unwrap()),
+                    datapoints: s,
+                    colour: &BLUE,
+                    marker: Some(marker.clone()),
+                }
+                .into_line_f64(),
+            );
+
+            let mut s = Vec::new();
+            for input_size in &input_sizes {
+                let accuracy_measurements = sample_digest_accuracy(
+                    create_t_digest_f64(t_digest_param.to_f64().unwrap()),
+                    || {
+                        dataset_func(*input_size)
+                            .into_iter()
+                            .map(|x| x.to_f64().unwrap())
+                            .collect()
+                    },
+                    test_func_f64(quantile.to_f64().unwrap()),
+                    error_func_f64,
+                    10,
+                )
+                .unwrap();
+                s.push((*input_size as f64, accuracy_measurements));
+            }
+
+            series.push(
+                Line {
+                    name: format!(
+                        "t-Digest f64, q = 1e{:?}",
+                        quantile.log10().to_i32().unwrap()
+                    ),
+                    datapoints: s,
+                    colour: &BLUE,
+                    marker: Some(marker.clone()),
+                }
+                .into_line_f64(),
+            );
 
             let mut s = Vec::new();
             for input_size in &input_sizes {
@@ -1082,15 +1138,18 @@ where
                 s.push((T::from(*input_size).unwrap(), accuracy_measurements));
             }
 
-            series.push(Line {
-                name: format!(
-                    "t-Digest k2n, q = 1e{:?}",
-                    quantile.log10().to_i32().unwrap()
-                ),
-                datapoints: s,
-                colour: &CYAN,
-                marker: Some(marker.clone()),
-            });
+            series.push(
+                Line {
+                    name: format!(
+                        "t-Digest k2n, q = 1e{:?}",
+                        quantile.log10().to_i32().unwrap()
+                    ),
+                    datapoints: s,
+                    colour: &CYAN,
+                    marker: Some(marker.clone()),
+                }
+                .into_line_f64(),
+            );
         }
         plot_line_graph(
             &format!(

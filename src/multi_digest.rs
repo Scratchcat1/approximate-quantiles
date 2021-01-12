@@ -54,4 +54,8 @@ where
         }
         sum / F::from(self.digests.len()).unwrap()
     }
+
+    fn count(&self) -> u64 {
+        self.digests.iter().map(|d| d.count()).sum()
+    }
 }

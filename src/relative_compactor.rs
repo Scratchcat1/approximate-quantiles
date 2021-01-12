@@ -136,6 +136,10 @@ where
         }
         return mid;
     }
+
+    fn count(&self) -> u64 {
+        return self.count;
+    }
 }
 
 impl<F> RCSketch<F>
