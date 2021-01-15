@@ -1,3 +1,4 @@
+use approximate_quantiles::parallel_digest::ParallelDigest;
 use approximate_quantiles::relative_compactor::RCSketch;
 use approximate_quantiles::traits::Digest;
 use approximate_quantiles::util::{gen_asc_vec, gen_uniform_vec};
@@ -91,6 +92,18 @@ fn relative_compactor_comparison_uniform_range(c: &mut Criterion) {
             let test_input = gen_uniform_vec::<f64>(size);
             b.iter(|| {
                 let mut sketch = RCSketch::new(size as usize, 64);
+                sketch.add_buffer(&test_input)
+            });
+        });
+        group.bench_with_input(BenchmarkId::new("parallel", size), &size, |b, &size| {
+            let test_input = gen_uniform_vec::<f64>(size);
+            b.iter(|| {
+                let mut sketch = ParallelDigest::new(vec![
+                    Box::new(RCSketch::new(size as usize, 64)),
+                    Box::new(RCSketch::new(size as usize, 64)),
+                    Box::new(RCSketch::new(size as usize, 64)),
+                    Box::new(RCSketch::new(size as usize, 64)),
+                ]);
                 sketch.add_buffer(&test_input)
             });
         });

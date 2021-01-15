@@ -288,8 +288,8 @@ where
             compress_factor,
             scale_func,
             inverse_scale_func,
-            min: T::from(f64::INFINITY).unwrap(),
-            max: T::from(f64::NEG_INFINITY).unwrap(),
+            min: T::max_value(),
+            max: T::min_value(),
         }
     }
 
