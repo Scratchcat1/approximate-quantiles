@@ -1,3 +1,4 @@
+use approximate_quantiles::parallel_digest::ParallelDigest;
 use approximate_quantiles::relative_compactor::{CompactionMethod, RCSketch};
 use approximate_quantiles::t_digest::{scale_functions, t_digest::TDigest};
 use approximate_quantiles::traits::{Digest, OwnedSize};
@@ -925,6 +926,185 @@ where
     }
 }
 
+fn plot_error_against_mem_usage_parallel<T>()
+where
+    T: Float + Send + Sync + NumAssignOps + std::fmt::Debug,
+{
+    let test_func =
+        |value: T| move |digest: &mut dyn Digest<T>| digest.est_value_at_quantile(value);
+
+    let error_func = |a, b| {
+        T::max(
+            T::from(1.0).unwrap(),
+            relative_error(a, b) * T::from(1e6).unwrap(),
+        )
+    };
+
+    let create_parallel_rcsketch = |threads: usize, accuracy_param: T| {
+        move |dataset: &[T]| {
+            let mut digest = ParallelDigest::new(
+                (0..threads)
+                    .map(|_| {
+                        RCSketch::new(dataset.len() / threads, accuracy_param.to_usize().unwrap())
+                    })
+                    .collect(),
+            );
+            digest.add_buffer(dataset);
+            digest
+        }
+    };
+
+    let create_parallel_t_digest = |threads: usize, compression_param: T| {
+        move |dataset: &[T]| {
+            let mut digest = ParallelDigest::new(
+                (0..threads)
+                    .map(|_| {
+                        TDigest::new(
+                            &scale_functions::k2,
+                            &scale_functions::inv_k2,
+                            compression_param / T::from(threads).unwrap(),
+                        )
+                    })
+                    .collect(),
+            );
+            dataset
+                .chunks(T_DIGEST_CHUNK_SIZE)
+                .for_each(|chunk| digest.add_buffer(chunk));
+            digest
+        }
+    };
+
+    let rc_test_values = [1.0, 5.0, 10.0, 20.0, 40.0, 60.0, 100.0]
+        .iter()
+        .map(|x| T::from(*x).unwrap())
+        .collect::<Vec<T>>();
+    let t_digest_test_values = (4..14)
+        // .iter()
+        .map(|x| T::from(1 << x).unwrap())
+        .collect::<Vec<T>>();
+
+    let quantiles = [
+        (1e-5, "X"),
+        (1e-4, "▲"),
+        (1e-3, "◆"),
+        (1e-2, "●"),
+        (1e-1, "■"),
+    ]
+    .iter()
+    .map(|(q, marker)| (T::from(*q).unwrap(), marker.to_string()))
+    .collect::<Vec<(T, String)>>();
+
+    let thread_setups = [(1, &BLUE), (2, &CYAN), (4, &MAGENTA), (8, &RED)];
+
+    let input_size = 100_000;
+    let rc_sketch_mem_size = |threads, param| {
+        let digest = create_parallel_rcsketch(threads, param)(&gen_uniform_tan_vec(input_size));
+        digest.owned_size()
+    };
+    let t_digest_mem_size = |threads, param| {
+        let digest = create_parallel_t_digest(threads, param)(&gen_uniform_tan_vec(input_size));
+        digest.owned_size()
+    };
+
+    for (dist_name, dataset_func) in &get_distributions() {
+        let mut series = Vec::new();
+
+        for (threads, colour) in &thread_setups {
+            for (quantile, marker) in &quantiles {
+                let mut s = Vec::new();
+                for rcsketch_param in &rc_test_values {
+                    println!("Hi");
+                    let accuracy_measurements = sample_digest_accuracy(
+                        create_parallel_rcsketch(*threads, *rcsketch_param),
+                        || dataset_func(input_size),
+                        test_func(*quantile),
+                        error_func,
+                        100,
+                    )
+                    .unwrap();
+                    s.push((
+                        T::from(rc_sketch_mem_size(*threads, *rcsketch_param)).unwrap(),
+                        accuracy_measurements,
+                    ));
+                }
+
+                series.push(Line {
+                    name: format!(
+                        "RCSketch, t = {}, q = 1e{:?}",
+                        threads,
+                        quantile.log10().to_i32().unwrap()
+                    ),
+                    datapoints: s,
+                    colour: colour,
+                    marker: Some(marker.clone()),
+                });
+            }
+        }
+        plot_line_graph(
+            &format!(
+                "RCSketch error vs memory usage for quantile estimate at value using parallel digest. Dist: {}",
+                dist_name
+            ),
+            series,
+            &Path::new(&format!(
+                "plots/err_vs_mem_usage_rcsketch_parallel_for_est_quantile_from_value_{}.png",
+                dist_name.to_lowercase().replace(" ", "_")
+            )),
+            "Memory (bytes)",
+            "Relative Error (ppm)",
+            false,
+        )
+        .unwrap();
+        let mut series = Vec::new();
+
+        for (threads, colour) in &thread_setups {
+            for (quantile, marker) in &quantiles {
+                let mut s = Vec::new();
+                for t_digest_param in &t_digest_test_values {
+                    let accuracy_measurements = sample_digest_accuracy(
+                        create_parallel_t_digest(*threads, *t_digest_param),
+                        || dataset_func(input_size),
+                        test_func(*quantile),
+                        error_func,
+                        100,
+                    )
+                    .unwrap();
+                    s.push((
+                        T::from(t_digest_mem_size(*threads, *t_digest_param)).unwrap(),
+                        accuracy_measurements,
+                    ));
+                }
+
+                series.push(Line {
+                    name: format!(
+                        "t-Digest, t = {}, q = 1e{:?}",
+                        threads,
+                        quantile.log10().to_i32().unwrap()
+                    ),
+                    datapoints: s,
+                    colour: colour,
+                    marker: Some(marker.clone()),
+                });
+            }
+        }
+        plot_line_graph(
+            &format!(
+                "T Digest error vs memory usage for quantile estimate at value using parallel digest. Dist: {}",
+                dist_name
+            ),
+            series,
+            &Path::new(&format!(
+                "plots/err_vs_mem_usage_tdigest_parallel_for_est_quantile_from_value_{}.png",
+                dist_name.to_lowercase().replace(" ", "_")
+            )),
+            "Memory (bytes)",
+            "Relative Error (ppm)",
+            false,
+        )
+        .unwrap();
+    }
+}
+
 fn plot_error_against_input_size<T>()
 where
     T: Float + Send + Sync + NumAssignOps + std::fmt::Debug,
@@ -1372,8 +1552,9 @@ fn main() {
     // determine_required_parameter::<f32>();
     // determine_required_parameter::<f64>();
     // plot_error_against_mem_usage::<f32>();
+    plot_error_against_mem_usage_parallel::<f32>();
     // plot_error_against_input_size::<f32>();
     // plot_memory_usage_against_compression_parameter::<f32>();
-    plot_memory_usage_against_input_size::<f32>();
+    // plot_memory_usage_against_input_size::<f32>();
     println!("Complete");
 }

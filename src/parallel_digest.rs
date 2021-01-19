@@ -3,18 +3,20 @@ use num_traits::Float;
 use rayon::prelude::*;
 use std::cmp::Ordering;
 
-pub struct ParallelDigest<F>
+pub struct ParallelDigest<D, F>
 where
     F: Float,
+    D: Digest<F> + Send + Sync,
 {
-    pub digests: Vec<Box<dyn Digest<F> + Send + Sync>>,
+    pub digests: Vec<D>,
     pub min: F,
     pub max: F,
 }
 
-impl<F> Digest<F> for ParallelDigest<F>
+impl<D, F> Digest<F> for ParallelDigest<D, F>
 where
-    F: Float + Sync + std::fmt::Debug,
+    F: Float + Sync,
+    D: Digest<F> + Send + Sync,
 {
     fn add(&mut self, item: F) {
         self.add_buffer(&[item]);
@@ -54,7 +56,7 @@ where
         let mut start = self.min;
         let mut end = self.max;
         let mut mid = (start + end) / F::from(2.0).unwrap();
-        while (end - start).abs() / (self.min.abs() + self.max.abs()) > F::from(1e-8).unwrap() {
+        while (end - start).abs() / (self.min.abs() + self.max.abs()) > F::from(1e-6).unwrap() {
             mid = (start + end) / F::from(2.0).unwrap();
             let current_quantile = self.est_quantile_at_value(mid);
 
@@ -83,16 +85,29 @@ where
     }
 }
 
-impl<F> ParallelDigest<F>
+impl<D, F> ParallelDigest<D, F>
 where
     F: Float,
+    D: Digest<F> + Send + Sync,
 {
-    pub fn new(digests: Vec<Box<dyn Digest<F> + Send + Sync>>) -> Self {
+    pub fn new(digests: Vec<D>) -> Self {
         Self {
             digests,
             min: F::max_value(),
             max: F::min_value(),
         }
+    }
+}
+
+impl<D, F> OwnedSize for ParallelDigest<D, F>
+where
+    F: Float,
+    D: Digest<F> + Send + Sync + OwnedSize,
+{
+    fn owned_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+            + std::mem::size_of::<D>() * self.digests.capacity()
+            + self.digests.iter().map(|d| d.owned_size()).sum::<usize>()
     }
 }
 
@@ -109,10 +124,10 @@ mod test {
     fn add_buffer_with_many_centroids() {
         let buffer = gen_asc_vec(1001);
         let mut digest = ParallelDigest::new(vec![
-            Box::new(LinearDigest::new()),
-            Box::new(LinearDigest::new()),
-            Box::new(LinearDigest::new()),
-            Box::new(LinearDigest::new()),
+            LinearDigest::new(),
+            LinearDigest::new(),
+            LinearDigest::new(),
+            LinearDigest::new(),
         ]);
         digest.add_buffer(&buffer);
 
@@ -131,16 +146,12 @@ mod test {
             .map(|_| uniform.sample(&mut rng) as f64)
             .collect();
         let mut digest = ParallelDigest::new(vec![
-            Box::new(LinearDigest::new()),
-            Box::new(LinearDigest::new()),
-            Box::new(LinearDigest::new()),
-            Box::new(LinearDigest::new()),
+            LinearDigest::new(),
+            LinearDigest::new(),
+            LinearDigest::new(),
+            LinearDigest::new(),
         ]);
 
-        // let x = (0..4)
-        //     .map(|_| Box::new(LinearDigest::new()) as Box<dyn Digest<f64> + Send + Sync>)
-        //     .collect();
-        // let mut y = ParallelDigest::new(x);
         let mut linear_digest = LinearDigest::new();
         digest.add_buffer(&buffer);
         linear_digest.add_buffer(&buffer);
@@ -191,10 +202,10 @@ mod test {
             .map(|_| uniform.sample(&mut rng) as f64)
             .collect();
         let mut digest = ParallelDigest::new(vec![
-            Box::new(LinearDigest::new()),
-            Box::new(LinearDigest::new()),
-            Box::new(LinearDigest::new()),
-            Box::new(LinearDigest::new()),
+            LinearDigest::new(),
+            LinearDigest::new(),
+            LinearDigest::new(),
+            LinearDigest::new(),
         ]);
         let mut linear_digest = LinearDigest::new();
         digest.add_buffer(&buffer);
@@ -241,10 +252,10 @@ mod test {
     fn est_quantile_at_value() {
         let buffer: Vec<f64> = (0..1000).map(|x| -500.0 + x as f64).collect();
         let mut digest = ParallelDigest::new(vec![
-            Box::new(LinearDigest::new()),
-            Box::new(LinearDigest::new()),
-            Box::new(LinearDigest::new()),
-            Box::new(LinearDigest::new()),
+            LinearDigest::new(),
+            LinearDigest::new(),
+            LinearDigest::new(),
+            LinearDigest::new(),
         ]);
         digest.add_buffer(&buffer);
 
@@ -281,10 +292,10 @@ mod test {
     #[test]
     fn est_value_at_quantile_singleton_centroids() {
         let mut digest = ParallelDigest::new(vec![
-            Box::new(LinearDigest::new()),
-            Box::new(LinearDigest::new()),
-            Box::new(LinearDigest::new()),
-            Box::new(LinearDigest::new()),
+            LinearDigest::new(),
+            LinearDigest::new(),
+            LinearDigest::new(),
+            LinearDigest::new(),
         ]);
         digest.add_buffer(&vec![1.0, 2.0, 8.0, 0.5]);
 

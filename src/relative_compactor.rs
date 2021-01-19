@@ -359,7 +359,7 @@ where
             //         / (cloned_buffer[index] - cloned_buffer[index - 1])
             //             .to_f64()
             //             .unwrap())
-            //         * (2.0.powi(i as i32 - 1))) as usize;
+            //         * (2.0.powi(i as i32))) as usize;
             // }
             // rank += (self.buffers[i].iter().filter(|x| **x == rank_item).count() * (1 << i)) / 2;
         }
