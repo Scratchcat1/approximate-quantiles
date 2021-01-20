@@ -85,7 +85,7 @@ where
         //         .map(|x| x.to_f64().unwrap())
         //         .collect::<Vec<f64>>()
         // );
-        let mut start = *self
+        let min = *self
             .buffers
             .iter()
             .map(|buffer| {
@@ -96,7 +96,7 @@ where
             })
             .min_by(|a, b| a.partial_cmp(b).unwrap())
             .unwrap();
-        let mut end = *self
+        let max = *self
             .buffers
             .iter()
             .map(|buffer| {
@@ -107,9 +107,12 @@ where
             })
             .max_by(|a, b| a.partial_cmp(b).unwrap())
             .unwrap();
+        let mut start = min;
+        let mut end = max;
         let mut mid = (start + end) / F::from(2.0).unwrap();
         // println!("----------------");
-        while (end - start).abs() / (end.abs() + start.abs()) > F::from(0.00001).unwrap() {
+        // Max and min must be used as if start or end == 0 the proportional difference remains around 1.
+        while (end - start).abs() / (min.abs() + max.abs()) > F::from(1e-6).unwrap() {
             mid = (start + end) / F::from(2.0).unwrap();
             let current_quantile = self.est_quantile_at_value(mid);
 

@@ -56,6 +56,7 @@ where
         let mut start = self.min;
         let mut end = self.max;
         let mut mid = (start + end) / F::from(2.0).unwrap();
+        // Max and min must be used as if start or end == 0 the proportional difference remains around 1.
         while (end - start).abs() / (self.min.abs() + self.max.abs()) > F::from(1e-6).unwrap() {
             mid = (start + end) / F::from(2.0).unwrap();
             let current_quantile = self.est_quantile_at_value(mid);
