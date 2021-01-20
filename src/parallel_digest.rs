@@ -15,7 +15,7 @@ where
 
 impl<D, F> Digest<F> for ParallelDigest<D, F>
 where
-    F: Float + Sync,
+    F: Float + Sync + Send,
     D: Digest<F> + Send + Sync,
 {
     fn add(&mut self, item: F) {
@@ -46,9 +46,9 @@ where
     fn est_quantile_at_value(&mut self, value: F) -> F {
         let est_rank: F = self
             .digests
-            .iter_mut()
+            .par_iter_mut()
             .map(|d| d.est_quantile_at_value(value) * F::from(d.count()).unwrap())
-            .fold(F::from(0.0).unwrap(), |acc, x| acc + x);
+            .reduce(|| F::from(0.0).unwrap(), |acc, x| acc + x);
         est_rank / F::from(self.count()).unwrap()
     }
 
