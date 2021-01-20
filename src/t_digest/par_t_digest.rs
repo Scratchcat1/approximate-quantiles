@@ -7,10 +7,10 @@ use rayon::prelude::*;
 #[derive(Clone)]
 pub struct ParTDigest<C, F, G, T>
 where
-    F: Fn(T, T, T) -> T + Sync,
-    G: Fn(T, T, T) -> T + Sync,
-    C: Fn() -> TDigest<F, G, T> + Sync,
-    T: Float + Send + Sync + NumAssignOps,
+    F: Fn(T, T, T) -> T,
+    G: Fn(T, T, T) -> T,
+    C: Fn() -> TDigest<F, G, T>,
+    T: Float,
 {
     pub digest: TDigest<F, G, T>,
     threads: usize,
@@ -21,10 +21,10 @@ where
 
 impl<C, F, G, T> OwnedSize for ParTDigest<C, F, G, T>
 where
-    F: Fn(T, T, T) -> T + Sync + Send,
-    G: Fn(T, T, T) -> T + Sync + Send,
-    C: Fn() -> TDigest<F, G, T> + Sync + OwnedSize,
-    T: Float + Sync + Send + NumAssignOps,
+    F: Fn(T, T, T) -> T,
+    G: Fn(T, T, T) -> T,
+    C: Fn() -> TDigest<F, G, T> + OwnedSize,
+    T: Float,
 {
     fn owned_size(&self) -> usize {
         std::mem::size_of::<Self>()

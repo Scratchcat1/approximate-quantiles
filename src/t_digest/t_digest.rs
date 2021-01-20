@@ -13,7 +13,7 @@ pub struct TDigest<F, G, T>
 where
     F: Fn(T, T, T) -> T,
     G: Fn(T, T, T) -> T,
-    T: Float + Send + Sync,
+    T: Float,
 {
     /// Vector of centroids
     pub centroids: Vec<Centroid<T>>,
@@ -33,7 +33,7 @@ impl<F, G, T> OwnedSize for TDigest<F, G, T>
 where
     F: Fn(T, T, T) -> T,
     G: Fn(T, T, T) -> T,
-    T: Float + Send + Sync + NumAssignOps,
+    T: Float,
 {
     fn owned_size(&self) -> usize {
         std::mem::size_of::<Self>() + std::mem::size_of::<Centroid<T>>() * self.centroids.capacity()

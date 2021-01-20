@@ -6,7 +6,7 @@ use std::cmp::Ordering;
 pub struct ParallelDigest<D, F>
 where
     F: Float,
-    D: Digest<F> + Send + Sync,
+    D: Digest<F>,
 {
     pub digests: Vec<D>,
     pub min: F,
@@ -89,7 +89,7 @@ where
 impl<D, F> ParallelDigest<D, F>
 where
     F: Float,
-    D: Digest<F> + Send + Sync,
+    D: Digest<F>,
 {
     pub fn new(digests: Vec<D>) -> Self {
         Self {
