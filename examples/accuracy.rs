@@ -406,34 +406,30 @@ where
 
 /// Returns each of the estimation functions to be tested.
 /// `returns` Tuples of (estimation function name, estimation function which takes the value to test at and
-/// returns a function which takes a digest and returns the estimate at that value)
+/// returns a function which takes a digest and returns the estimate at that value,
+/// a function which takes a quantile and a sample dataset an outputs the value which the estimation function should be fed)
 fn get_estimation_funcs<F>() -> Vec<(
     String,
     Box<dyn Fn(F) -> Box<dyn Fn(&mut dyn Digest<F>) -> F + Send + Sync> + Send + Sync>,
-    Box<dyn Fn(&[F]) -> Vec<F> + Send + Sync>,
+    Box<dyn Fn(F, &[F]) -> F + Send + Sync>,
 )>
 where
     F: Float + Send + Sync + 'static,
 {
-    let quantiles: Vec<F> = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1]
-        .iter()
-        .map(|q| F::from(*q).unwrap())
-        .collect();
-    let qav_quantiles = quantiles.clone();
     vec![
         (
             "value at quantile".to_string(),
             Box::new(|value: F| {
                 Box::new(move |digest: &mut dyn Digest<F>| digest.est_value_at_quantile(value))
             }),
-            Box::new(move |_| quantiles.clone()),
+            Box::new(|q, _| q),
         ),
         (
             "quantile at value".to_string(),
             Box::new(|quantile: F| {
                 Box::new(move |digest: &mut dyn Digest<F>| digest.est_quantile_at_value(quantile))
             }),
-            Box::new(move |dataset| values_from_quantiles(dataset, &qav_quantiles)),
+            Box::new(|q, dataset| values_from_quantiles(dataset, &[q])[0]),
         ),
     ]
 }
@@ -1039,19 +1035,19 @@ where
         digest.owned_size()
     };
 
-    for (est_name, est_func, gen_est_positions) in &get_estimation_funcs() {
+    for (est_name, est_func, gen_est_position) in &get_estimation_funcs() {
         for (dist_name, dataset_func) in &get_distributions() {
             let mut series = Vec::new();
 
             for (threads, colour) in &thread_setups {
                 for (quantile, marker) in &quantiles {
+                    let est_value = gen_est_position(*quantile, &dataset_func(input_size));
                     let mut s = Vec::new();
                     for rcsketch_param in &rc_test_values {
-                        println!("Hi");
                         let accuracy_measurements = sample_digest_accuracy(
                             create_parallel_rcsketch(*threads, *rcsketch_param),
                             || dataset_func(input_size),
-                            est_func(*quantile),
+                            est_func(est_value),
                             error_func,
                             100,
                         )
@@ -1094,12 +1090,14 @@ where
 
             for (threads, colour) in &thread_setups {
                 for (quantile, marker) in &quantiles {
+                    let est_value = gen_est_position(*quantile, &dataset_func(input_size));
+
                     let mut s = Vec::new();
                     for t_digest_param in &t_digest_test_values {
                         let accuracy_measurements = sample_digest_accuracy(
                             create_parallel_t_digest(*threads, *t_digest_param),
                             || dataset_func(input_size),
-                            est_func(*quantile),
+                            est_func(est_value),
                             error_func,
                             100,
                         )
