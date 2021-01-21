@@ -99,10 +99,10 @@ fn relative_compactor_comparison_uniform_range(c: &mut Criterion) {
             let test_input = gen_uniform_vec::<f64>(size);
             b.iter(|| {
                 let mut sketch = ParallelDigest::new(vec![
-                    Box::new(RCSketch::new(size as usize, 64)),
-                    Box::new(RCSketch::new(size as usize, 64)),
-                    Box::new(RCSketch::new(size as usize, 64)),
-                    Box::new(RCSketch::new(size as usize, 64)),
+                    RCSketch::new(size as usize, 64),
+                    RCSketch::new(size as usize, 64),
+                    RCSketch::new(size as usize, 64),
+                    RCSketch::new(size as usize, 64),
                 ]);
                 sketch.add_buffer(&test_input)
             });

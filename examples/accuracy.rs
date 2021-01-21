@@ -368,9 +368,11 @@ where
     Ok(())
 }
 
+/// Returns each of the distributions to be tested.
+/// `returns` Tuples of (distribution name, distribution generation function taking an input size)
 fn get_distributions<F>() -> Vec<(String, Box<dyn Fn(i32) -> Vec<F> + Send + Sync>)>
 where
-    F: Float + Send + Sync,
+    F: Float,
 {
     vec![
         (
@@ -399,6 +401,40 @@ where
         //             .collect()
         //     }),
         // ),
+    ]
+}
+
+/// Returns each of the estimation functions to be tested.
+/// `returns` Tuples of (estimation function name, estimation function which takes the value to test at and
+/// returns a function which takes a digest and returns the estimate at that value)
+fn get_estimation_funcs<F>() -> Vec<(
+    String,
+    Box<dyn Fn(F) -> Box<dyn Fn(&mut dyn Digest<F>) -> F + Send + Sync> + Send + Sync>,
+    Box<dyn Fn(&[F]) -> Vec<F> + Send + Sync>,
+)>
+where
+    F: Float + Send + Sync + 'static,
+{
+    let quantiles: Vec<F> = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1]
+        .iter()
+        .map(|q| F::from(*q).unwrap())
+        .collect();
+    let qav_quantiles = quantiles.clone();
+    vec![
+        (
+            "value at quantile".to_string(),
+            Box::new(|value: F| {
+                Box::new(move |digest: &mut dyn Digest<F>| digest.est_value_at_quantile(value))
+            }),
+            Box::new(move |_| quantiles.clone()),
+        ),
+        (
+            "quantile at value".to_string(),
+            Box::new(|quantile: F| {
+                Box::new(move |digest: &mut dyn Digest<F>| digest.est_quantile_at_value(quantile))
+            }),
+            Box::new(move |dataset| values_from_quantiles(dataset, &qav_quantiles)),
+        ),
     ]
 }
 
@@ -928,11 +964,8 @@ where
 
 fn plot_error_against_mem_usage_parallel<T>()
 where
-    T: Float + Send + Sync + NumAssignOps + std::fmt::Debug,
+    T: Float + Send + Sync + NumAssignOps + std::fmt::Debug + 'static,
 {
-    let test_func =
-        |value: T| move |digest: &mut dyn Digest<T>| digest.est_value_at_quantile(value);
-
     let error_func = |a, b| {
         T::max(
             T::from(1.0).unwrap(),
@@ -996,7 +1029,7 @@ where
 
     let thread_setups = [(1, &BLUE), (2, &CYAN), (4, &MAGENTA), (8, &RED)];
 
-    let input_size = 100_000;
+    let input_size = 1_000_000;
     let rc_sketch_mem_size = |threads, param| {
         let digest = create_parallel_rcsketch(threads, param)(&gen_uniform_tan_vec(input_size));
         digest.owned_size()
@@ -1006,102 +1039,106 @@ where
         digest.owned_size()
     };
 
-    for (dist_name, dataset_func) in &get_distributions() {
-        let mut series = Vec::new();
+    for (est_name, est_func, gen_est_positions) in &get_estimation_funcs() {
+        for (dist_name, dataset_func) in &get_distributions() {
+            let mut series = Vec::new();
 
-        for (threads, colour) in &thread_setups {
-            for (quantile, marker) in &quantiles {
-                let mut s = Vec::new();
-                for rcsketch_param in &rc_test_values {
-                    println!("Hi");
-                    let accuracy_measurements = sample_digest_accuracy(
-                        create_parallel_rcsketch(*threads, *rcsketch_param),
-                        || dataset_func(input_size),
-                        test_func(*quantile),
-                        error_func,
-                        100,
-                    )
-                    .unwrap();
-                    s.push((
-                        T::from(rc_sketch_mem_size(*threads, *rcsketch_param)).unwrap(),
-                        accuracy_measurements,
-                    ));
+            for (threads, colour) in &thread_setups {
+                for (quantile, marker) in &quantiles {
+                    let mut s = Vec::new();
+                    for rcsketch_param in &rc_test_values {
+                        println!("Hi");
+                        let accuracy_measurements = sample_digest_accuracy(
+                            create_parallel_rcsketch(*threads, *rcsketch_param),
+                            || dataset_func(input_size),
+                            est_func(*quantile),
+                            error_func,
+                            100,
+                        )
+                        .unwrap();
+                        s.push((
+                            T::from(rc_sketch_mem_size(*threads, *rcsketch_param)).unwrap(),
+                            accuracy_measurements,
+                        ));
+                    }
+
+                    series.push(Line {
+                        name: format!(
+                            "RCSketch, t = {}, q = 1e{:?}",
+                            threads,
+                            quantile.log10().to_i32().unwrap()
+                        ),
+                        datapoints: s,
+                        colour: colour,
+                        marker: Some(marker.clone()),
+                    });
                 }
-
-                series.push(Line {
-                    name: format!(
-                        "RCSketch, t = {}, q = 1e{:?}",
-                        threads,
-                        quantile.log10().to_i32().unwrap()
-                    ),
-                    datapoints: s,
-                    colour: colour,
-                    marker: Some(marker.clone()),
-                });
             }
-        }
-        plot_line_graph(
-            &format!(
-                "RCSketch error vs memory usage for quantile estimate at value using parallel digest. Dist: {}",
-                dist_name
-            ),
-            series,
-            &Path::new(&format!(
-                "plots/err_vs_mem_usage_rcsketch_parallel_for_est_quantile_from_value_{}.png",
-                dist_name.to_lowercase().replace(" ", "_")
-            )),
-            "Memory (bytes)",
-            "Relative Error (ppm)",
-            false,
-        )
-        .unwrap();
-        let mut series = Vec::new();
+            plot_line_graph(
+                &format!(
+                    "RCSketch error vs memory usage for estimate {} using parallel digest. Dist: {}",
+                    est_name, dist_name
+                ),
+                series,
+                &Path::new(&format!(
+                    "plots/err_vs_mem_usage_rcsketch_parallel_for_{}_{}.png",
+                    est_name.to_lowercase().replace(" ", "_"),
+                    dist_name.to_lowercase().replace(" ", "_")
+                )),
+                "Memory (bytes)",
+                "Relative Error (ppm)",
+                false,
+            )
+            .unwrap();
+            let mut series = Vec::new();
 
-        for (threads, colour) in &thread_setups {
-            for (quantile, marker) in &quantiles {
-                let mut s = Vec::new();
-                for t_digest_param in &t_digest_test_values {
-                    let accuracy_measurements = sample_digest_accuracy(
-                        create_parallel_t_digest(*threads, *t_digest_param),
-                        || dataset_func(input_size),
-                        test_func(*quantile),
-                        error_func,
-                        100,
-                    )
-                    .unwrap();
-                    s.push((
-                        T::from(t_digest_mem_size(*threads, *t_digest_param)).unwrap(),
-                        accuracy_measurements,
-                    ));
+            for (threads, colour) in &thread_setups {
+                for (quantile, marker) in &quantiles {
+                    let mut s = Vec::new();
+                    for t_digest_param in &t_digest_test_values {
+                        let accuracy_measurements = sample_digest_accuracy(
+                            create_parallel_t_digest(*threads, *t_digest_param),
+                            || dataset_func(input_size),
+                            est_func(*quantile),
+                            error_func,
+                            100,
+                        )
+                        .unwrap();
+                        s.push((
+                            T::from(t_digest_mem_size(*threads, *t_digest_param)).unwrap(),
+                            accuracy_measurements,
+                        ));
+                    }
+
+                    series.push(Line {
+                        name: format!(
+                            "t-Digest, t = {}, q = 1e{:?}",
+                            threads,
+                            quantile.log10().to_i32().unwrap()
+                        ),
+                        datapoints: s,
+                        colour: colour,
+                        marker: Some(marker.clone()),
+                    });
                 }
-
-                series.push(Line {
-                    name: format!(
-                        "t-Digest, t = {}, q = 1e{:?}",
-                        threads,
-                        quantile.log10().to_i32().unwrap()
-                    ),
-                    datapoints: s,
-                    colour: colour,
-                    marker: Some(marker.clone()),
-                });
             }
+            plot_line_graph(
+                &format!(
+                    "T Digest error vs memory usage for estimate {} using parallel digest. Dist: {}",
+                    est_name, dist_name
+                ),
+                series,
+                &Path::new(&format!(
+                    "plots/err_vs_mem_usage_tdigest_parallel_for_{}_{}.png",
+                    est_name.to_lowercase().replace(" ", "_"),
+                    dist_name.to_lowercase().replace(" ", "_")
+                )),
+                "Memory (bytes)",
+                "Relative Error (ppm)",
+                false,
+            )
+            .unwrap();
         }
-        plot_line_graph(
-            &format!(
-                "T Digest error vs memory usage for quantile estimate at value using parallel digest. Dist: {}",
-                dist_name
-            ),
-            series,
-            &Path::new(&format!(
-                "plots/err_vs_mem_usage_tdigest_parallel_for_est_quantile_from_value_{}.png",
-                dist_name.to_lowercase().replace(" ", "_")
-            )),
-            "Memory (bytes)",
-            "Relative Error (ppm)",
-            false,
-        )
-        .unwrap();
     }
 }
 
