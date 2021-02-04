@@ -198,12 +198,11 @@ fn t_digest_comparison_uniform_range(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("parallel", size), &size, |b, &size| {
             let test_input = gen_uniform_vec(size);
             b.iter(|| {
-                let mut digest = ParallelDigest::new(vec![
-                    TDigest::new(&k1, &inv_k1, black_box(50.0)),
-                    TDigest::new(&k1, &inv_k1, black_box(50.0)),
-                    TDigest::new(&k1, &inv_k1, black_box(50.0)),
-                    TDigest::new(&k1, &inv_k1, black_box(50.0)),
-                ]);
+                let mut digest = ParallelDigest::new(
+                    (0..num_cpus::get())
+                        .map(|_| TDigest::new(&k1, &inv_k1, black_box(50.0)))
+                        .collect(),
+                );
                 digest.add_buffer(&test_input);
             });
         });
