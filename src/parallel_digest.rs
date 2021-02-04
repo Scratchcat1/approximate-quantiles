@@ -24,30 +24,20 @@ where
 
     fn add_buffer(&mut self, buffer: &[F]) {
         let chunks = buffer.par_chunks((buffer.len() / self.digests.len()).max(1));
-        chunks
-            .zip(self.digests.par_iter_mut())
+        (chunks, self.digests.par_iter_mut())
+            .into_par_iter()
             .for_each(|(chunk, d)| d.add_buffer(chunk));
 
-        let chunks = buffer.par_chunks((buffer.len() / self.digests.len()).max(1));
-        let (buff_max, buff_min) = chunks
-            .map(|chunk| {
-                (
-                    *chunk
-                        .par_iter()
-                        .max_by(|a, b| a.partial_cmp(b).unwrap())
-                        .unwrap(),
-                    *chunk
-                        .par_iter()
-                        .min_by(|a, b| a.partial_cmp(b).unwrap())
-                        .unwrap(),
-                )
-            })
-            .reduce(
-                || (F::min_value(), F::max_value()),
-                |(a_max, a_min), (b_max, b_min)| (F::max(a_max, b_max), F::min(a_min, b_min)),
-            );
-        self.max = F::max(self.max, buff_max);
-        self.min = F::min(self.min, buff_min);
+        let buff_max = buffer
+            .par_iter()
+            .max_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap();
+        let buff_min = buffer
+            .par_iter()
+            .min_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap();
+        self.max = F::max(self.max, *buff_max);
+        self.min = F::min(self.min, *buff_min);
     }
 
     fn est_quantile_at_value(&mut self, value: F) -> F {
