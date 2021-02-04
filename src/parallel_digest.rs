@@ -23,7 +23,8 @@ where
     }
 
     fn add_buffer(&mut self, buffer: &[F]) {
-        let chunks = buffer.par_chunks((buffer.len() / self.digests.len()).max(1));
+        let chunks = buffer
+            .par_chunks(((buffer.len() as f64 / self.digests.len() as f64).ceil() as usize).max(1));
         (chunks, self.digests.par_iter_mut())
             .into_par_iter()
             .for_each(|(chunk, d)| d.add_buffer(chunk));
