@@ -1,5 +1,6 @@
 use approximate_quantiles::parallel_digest::ParallelDigest;
 use approximate_quantiles::relative_compactor::{CompactionMethod, RCSketch};
+use approximate_quantiles::sym_digest::SymDigest;
 use approximate_quantiles::t_digest::{scale_functions, t_digest::TDigest};
 use approximate_quantiles::traits::{Digest, OwnedSize};
 use approximate_quantiles::util::linear_digest::LinearDigest;
@@ -1140,6 +1141,196 @@ where
     }
 }
 
+fn plot_error_against_quantiles_full_range<T>()
+where
+    T: Float + Send + Sync + NumAssignOps + std::fmt::Debug + 'static,
+{
+    let error_func = |a, b| {
+        T::max(
+            T::from(1.0).unwrap(),
+            relative_error(a, b) * T::from(1e6).unwrap(),
+        )
+    };
+
+    let create_rcsketch = |accuracy_param: T| {
+        move |dataset: &[T]| {
+            let mut digest = RCSketch::new(dataset.len(), accuracy_param.to_usize().unwrap());
+            digest.add_buffer(dataset);
+            digest
+        }
+    };
+
+    let create_sym_rcsketch = |accuracy_param: T| {
+        move |dataset: &[T]| {
+            let rc_digest = RCSketch::new(dataset.len(), accuracy_param.to_usize().unwrap());
+            let mut digest = SymDigest::new(rc_digest.clone(), rc_digest.clone());
+            digest.add_buffer(dataset);
+            digest
+        }
+    };
+
+    let create_t_digest = |compression_param: T| {
+        move |dataset: &[T]| {
+            let mut digest = TDigest::new(
+                &scale_functions::k2,
+                &scale_functions::inv_k2,
+                compression_param,
+            );
+            dataset
+                .chunks(T_DIGEST_CHUNK_SIZE)
+                .for_each(|chunk| digest.add_buffer(chunk));
+            digest
+        }
+    };
+
+    let create_t_digest_asym = |compression_param: T| {
+        move |dataset: &[T]| {
+            let mut digest = TDigest::new(
+                &scale_functions::k2_asym,
+                &scale_functions::inv_k2_asym,
+                compression_param,
+            );
+            dataset
+                .chunks(T_DIGEST_CHUNK_SIZE)
+                .for_each(|chunk| digest.add_buffer(chunk));
+            digest
+        }
+    };
+
+    let rcsketch_param = T::from(20.0).unwrap();
+    let t_digest_param = T::from(1000.0).unwrap();
+
+    let quantiles = [
+        (1e-5, "1e-5"),
+        (1e-4, "1e-4"),
+        (1e-3, "1e-3"),
+        (1e-2, "1e-2"),
+        (1e-1, "1e-1"),
+        (0.5, "0.5"),
+        (1.0 - 1e-1, "0.9"),
+        (1.0 - 1e-2, "0.99"),
+        (1.0 - 1e-3, "0.999"),
+        (1.0 - 1e-4, "0.9999"),
+        (1.0 - 1e-5, "0.99999"),
+    ]
+    .iter()
+    .map(|(q, marker)| (T::from(*q).unwrap(), marker.to_string()))
+    .collect::<Vec<(T, String)>>();
+
+    let input_size = 1_000_000;
+
+    for (est_name, est_func, gen_est_position) in &get_estimation_funcs() {
+        for (dist_name, dataset_func) in &get_distributions() {
+            let digestfn = create_rcsketch(rcsketch_param);
+            let mut x = digestfn(&dataset_func(input_size));
+            for (quantile, quantile_string) in &quantiles {
+                println!(
+                    "{} at q={}: {:?}",
+                    dist_name,
+                    quantile_string,
+                    x.est_value_at_quantile(*quantile)
+                );
+            }
+            let mut series = Vec::new();
+            let mut s = Vec::new();
+            for (quantile, quantile_string) in &quantiles {
+                let est_value = gen_est_position(*quantile, &dataset_func(input_size));
+                let accuracy_measurements = sample_digest_accuracy(
+                    create_rcsketch(rcsketch_param),
+                    || dataset_func(input_size),
+                    est_func(est_value),
+                    error_func,
+                    100,
+                )
+                .unwrap();
+                s.push((T::from(*quantile).unwrap(), accuracy_measurements));
+            }
+            series.push(Line {
+                name: format!("RCSketch, ap = {:?}", rcsketch_param),
+                datapoints: s,
+                colour: &RED,
+                marker: None,
+            });
+
+            let mut s = Vec::new();
+            for (quantile, quantile_string) in &quantiles {
+                let est_value = gen_est_position(*quantile, &dataset_func(input_size));
+                let accuracy_measurements = sample_digest_accuracy(
+                    create_sym_rcsketch(rcsketch_param),
+                    || dataset_func(input_size),
+                    est_func(est_value),
+                    error_func,
+                    100,
+                )
+                .unwrap();
+                s.push((T::from(*quantile).unwrap(), accuracy_measurements));
+            }
+            series.push(Line {
+                name: format!("Sym RCSketch, ap = {:?}", rcsketch_param),
+                datapoints: s,
+                colour: &MAGENTA,
+                marker: None,
+            });
+
+            let mut s = Vec::new();
+            for (quantile, quantile_string) in &quantiles {
+                let est_value = gen_est_position(*quantile, &dataset_func(input_size));
+                let accuracy_measurements = sample_digest_accuracy(
+                    create_t_digest(t_digest_param),
+                    || dataset_func(input_size),
+                    est_func(est_value),
+                    error_func,
+                    100,
+                )
+                .unwrap();
+                s.push((T::from(*quantile).unwrap(), accuracy_measurements));
+            }
+            series.push(Line {
+                name: format!("T-Digest, ap = {:?}", t_digest_param),
+                datapoints: s,
+                colour: &BLUE,
+                marker: None,
+            });
+
+            let mut s = Vec::new();
+            for (quantile, quantile_string) in &quantiles {
+                let est_value = gen_est_position(*quantile, &dataset_func(input_size));
+                let accuracy_measurements = sample_digest_accuracy(
+                    create_t_digest_asym(t_digest_param),
+                    || dataset_func(input_size),
+                    est_func(est_value),
+                    error_func,
+                    100,
+                )
+                .unwrap();
+                s.push((T::from(*quantile).unwrap(), accuracy_measurements));
+            }
+            series.push(Line {
+                name: format!("T-Digest k2_asym, ap = {:?}", t_digest_param),
+                datapoints: s,
+                colour: &CYAN,
+                marker: None,
+            });
+
+            plot_box_plot_graph(
+                &format!(
+                    "Relative error against quantile for estimate {}. Digest similarity. Dist: {}",
+                    est_name, dist_name
+                ),
+                series,
+                &Path::new(&format!(
+                    "plots/err_vs_quantile_similarity_for_{}_{}.png",
+                    est_name.to_lowercase().replace(" ", "_"),
+                    dist_name.to_lowercase().replace(" ", "_")
+                )),
+                "Quantile",
+                "Relative Error (ppm)",
+            )
+            .unwrap();
+        }
+    }
+}
+
 fn plot_error_against_input_size<T>()
 where
     T: Float + Send + Sync + NumAssignOps + std::fmt::Debug,
@@ -1589,7 +1780,8 @@ fn main() {
     // determine_required_parameter::<f32>();
     // determine_required_parameter::<f64>();
     // plot_error_against_mem_usage::<f32>();
-    plot_error_against_mem_usage_parallel::<f32>();
+    // plot_error_against_mem_usage_parallel::<f32>();
+    plot_error_against_quantiles_full_range::<f32>();
     // plot_error_against_input_size::<f32>();
     // plot_memory_usage_against_compression_parameter::<f32>();
     // plot_memory_usage_against_input_size::<f32>();
