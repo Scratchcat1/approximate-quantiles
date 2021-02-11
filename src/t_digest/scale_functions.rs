@@ -56,14 +56,14 @@ where
     F: Float,
 {
     let effective_quantile = quantile * F::from(0.5).unwrap();
-    k2(effective_quantile, comp_factor, n)
+    k2(effective_quantile, comp_factor * F::from(2.0).unwrap(), n)
 }
 
 pub fn inv_k2_asym<F>(scale: F, comp_factor: F, n: F) -> F
 where
     F: Float,
 {
-    inv_k2(scale, comp_factor, n) * F::from(2.0).unwrap()
+    inv_k2(scale, comp_factor * F::from(2.0).unwrap(), n) * F::from(2.0).unwrap()
 }
 
 pub fn k2n<F>(quantile: F, comp_factor: F, n: F) -> F
