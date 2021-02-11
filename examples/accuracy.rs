@@ -1221,7 +1221,7 @@ where
 
     for (est_name, est_func, gen_est_position) in &get_estimation_funcs() {
         for (dist_name, dataset_func) in &get_distributions() {
-            let digestfn = create_rcsketch(rcsketch_param);
+            let digestfn = create_t_digest(t_digest_param);
             let mut x = digestfn(&dataset_func(input_size));
             for (quantile, quantile_string) in &quantiles {
                 println!(
