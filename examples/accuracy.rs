@@ -101,7 +101,7 @@ where
         .flatten()
         .collect();
     // println!("{:?}", y_values);
-    let y_values_range = fitting_range(y_values.iter().filter(|x| **x > 1e7));
+    let y_values_range = fitting_range(y_values.iter().filter(|x| **x <= 1e7));
     let x_values: Vec<f64> = series[0..1]
         .iter()
         .map(|s| s.datapoints.iter().map(|a| a.0).collect::<Vec<f64>>())
