@@ -56,8 +56,9 @@ where
 {
     let mut rng = rand::thread_rng();
     let exp = Exp::new(lambda.to_f64().unwrap()).unwrap();
+    // Subtract 1 to avoid values around 0 which can cause huge relative errors
     return (0..size)
-        .map(|_| F::from(-exp.sample(&mut rng)).unwrap())
+        .map(|_| F::from(-exp.sample(&mut rng) - 1.0).unwrap())
         .collect();
 }
 
