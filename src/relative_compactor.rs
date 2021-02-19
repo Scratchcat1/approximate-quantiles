@@ -10,8 +10,10 @@ where
 {
     /// Vector of relative compactors
     pub buffers: Vec<Vec<F>>,
-    /// Upper bound on the number of inputs expected
-    pub input_length: usize,
+    // /// Upper bound on the number of inputs expected
+    // pub input_length: usize,
+    /// Number of elements in the compactor
+    pub nom_size: usize,
     /// Parameter controlling error and buffer size
     pub k: usize,
     /// Size of the buffers
@@ -96,8 +98,8 @@ where
     pub fn new(input_length: usize, k: usize) -> RCSketch<F> {
         RCSketch {
             buffers: Vec::new(),
-            input_length,
             k,
+            nom_size: 0,
             buffer_size: Self::calc_buffer_size(input_length, k),
             count: 0,
             compaction_counters: Vec::new(),
@@ -176,20 +178,10 @@ where
             self.compaction_counters.push(0);
         }
         self.buffers[rc_index].push(item);
+        self.nom_size += 1;
         // If buffer is full compact and insert into the next buffer
-        if self.buffers[rc_index].len() >= self.buffer_size {
-            let compaction_index = if fast_compaction {
-                self.get_compact_index_fast()
-            } else {
-                self.get_compact_index(rc_index)
-            };
-            let output_items = self.compact(rc_index, compaction_index, compaction_method);
-            self.insert_at_rc_batch(
-                &output_items,
-                rc_index + 1,
-                fast_compaction,
-                compaction_method,
-            );
+        if self.nom_size >= self.buffer_size * self.buffers.len() {
+            self.compress(fast_compaction, compaction_method);
         }
     }
 
@@ -216,26 +208,35 @@ where
         let mut current_index = 0;
         while current_index < items.len() {
             let end = usize::min(
-                current_index + (self.buffer_size - self.buffers[rc_index].len()),
+                current_index + (self.buffer_size * self.buffers.len() - self.nom_size),
                 items.len(),
             );
             self.buffers[rc_index].extend(&items[current_index..end]);
+            self.nom_size += end - current_index;
             current_index = end;
             // If buffer is full compact and insert into the next buffer
             // Buffer may be overfilled since more than one item was added so keep compacting until size is below the buffer size.
-            while self.buffers[rc_index].len() >= self.buffer_size {
+            if self.nom_size >= self.buffer_size * self.buffers.len() {
+                self.compress(fast_compaction, compaction_method);
+            }
+        }
+    }
+
+    pub fn compress(&mut self, fast_compaction: bool, compaction_method: CompactionMethod) {
+        for h in 0..self.buffers.len() {
+            if self.buffers[h].len() >= self.buffer_size {
                 let compaction_index = if fast_compaction {
                     self.get_compact_index_fast()
                 } else {
-                    self.get_compact_index(rc_index)
+                    self.get_compact_index(h)
                 };
-                let output_items = self.compact(rc_index, compaction_index, compaction_method);
-                self.insert_at_rc_batch(
-                    &output_items,
-                    rc_index + 1,
-                    fast_compaction,
-                    compaction_method,
-                );
+                let output_items = self.compact(h, compaction_index, compaction_method);
+                self.nom_size += output_items.len();
+                if self.buffers.len() == h + 1 {
+                    self.buffers.push(Vec::with_capacity(self.buffer_size));
+                    self.compaction_counters.push(0);
+                }
+                self.buffers[h + 1].extend(output_items);
             }
         }
     }
@@ -254,6 +255,7 @@ where
         // Sort and extract the largest values
         self.buffers[rc_index].sort_by(|a, b| a.partial_cmp(&b).unwrap());
         let upper = self.buffers[rc_index].split_off(compact_index);
+        self.nom_size -= upper.len();
 
         match compaction_method {
             CompactionMethod::Default => {
