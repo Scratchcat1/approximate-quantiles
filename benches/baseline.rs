@@ -57,7 +57,7 @@ fn reference_benchmarks(c: &mut Criterion) {
 
     c.bench_function("vector_centroid_add_100000", |b| {
         b.iter(|| {
-            let mut buffer: Vec<Centroid> = (0..black_box(100000))
+            let mut buffer: Vec<Centroid<f64>> = (0..black_box(100000))
                 .map(|x| Centroid {
                     mean: x as f64,
                     weight: 1.0,
@@ -76,7 +76,7 @@ fn reference_benchmarks(c: &mut Criterion) {
 
     c.bench_function("vector_centroid_add_100000-warm", |b| {
         b.iter(|| {
-            let mut buffer: Vec<Centroid> = (0..black_box(100000))
+            let mut buffer: Vec<Centroid<f64>> = (0..black_box(100000))
                 .map(|x| Centroid {
                     mean: x as f64,
                     weight: 1.0,
@@ -89,7 +89,7 @@ fn reference_benchmarks(c: &mut Criterion) {
             let max = buffer.last().unwrap();
             black_box(min);
             black_box(max);
-            let mut vec: Vec<Centroid> = Vec::new();
+            let mut vec: Vec<Centroid<f64>> = Vec::new();
             let mut sum = 0.0;
             let mut weight = 0.0;
             for c in buffer {
@@ -128,7 +128,7 @@ fn reference_benchmarks(c: &mut Criterion) {
 
     c.bench_function("mergesort_sum_100000", |b| {
         b.iter(|| {
-            let mut buffer: Vec<Centroid> = (0..black_box(100000))
+            let mut buffer: Vec<Centroid<f64>> = (0..black_box(100000))
                 .map(|x| Centroid {
                     mean: x as f64,
                     weight: 1.0,
@@ -148,7 +148,7 @@ fn reference_benchmarks(c: &mut Criterion) {
 
     c.bench_function("mergesort_buffered_centroid_sum_100000", |b| {
         b.iter(|| {
-            let mut buffer: Vec<Centroid> = (0..black_box(100000))
+            let mut buffer: Vec<Centroid<f64>> = (0..black_box(100000))
                 .map(|x| Centroid {
                     mean: x as f64,
                     weight: 1.0,
@@ -183,7 +183,7 @@ fn reference_benchmarks(c: &mut Criterion) {
 
     c.bench_function("mergesort_buffered_dod_centroid_sum_100000", |b| {
         b.iter(|| {
-            let mut buffer: Vec<Centroid> = (0..black_box(100000))
+            let mut buffer: Vec<Centroid<f64>> = (0..black_box(100000))
                 .map(|x| Centroid {
                     mean: x as f64,
                     weight: 1.0,
@@ -225,7 +225,7 @@ fn reference_benchmarks(c: &mut Criterion) {
 
     c.bench_function("mergesort_dod_centroid_sum_100000", |b| {
         b.iter(|| {
-            let mut buffer: Vec<Centroid> = (0..black_box(100000))
+            let mut buffer: Vec<Centroid<f64>> = (0..black_box(100000))
                 .map(|x| Centroid {
                     mean: x as f64,
                     weight: 1.0,
@@ -247,7 +247,7 @@ fn reference_benchmarks(c: &mut Criterion) {
 
     c.bench_function("mergesort_sum_centroids_100000", |b| {
         b.iter(|| {
-            let mut buffer: Vec<Centroid> = (0..black_box(100000))
+            let mut buffer: Vec<Centroid<f64>> = (0..black_box(100000))
                 .map(|x| Centroid {
                     mean: x as f64,
                     weight: 1.0,
@@ -273,7 +273,7 @@ fn mergesort_uniform_range(c: &mut Criterion) {
     for size in (0..20).map(|x| 1 << x) {
         group.throughput(Throughput::Elements(size as u64));
         group.bench_with_input(BenchmarkId::new("sort_by", size), &size, |b, &size| {
-            let test_input = gen_uniform_vec(size);
+            let test_input = gen_uniform_vec::<f64>(size);
             b.iter(|| {
                 let mut input_copy = test_input.clone();
                 input_copy.sort_by(|a, b| a.partial_cmp(&b).unwrap());
@@ -282,7 +282,7 @@ fn mergesort_uniform_range(c: &mut Criterion) {
         });
 
         group.bench_with_input(BenchmarkId::new("par_sort_by", size), &size, |b, &size| {
-            let test_input = gen_uniform_vec(size);
+            let test_input = gen_uniform_vec::<f64>(size);
             b.iter(|| {
                 let mut input_copy = test_input.clone();
                 input_copy.par_sort_by(|a, b| a.partial_cmp(&b).unwrap());
@@ -301,7 +301,7 @@ fn keyed_sum_tree_from_vec(c: &mut Criterion) {
     for size in (0..15).map(|x| 1 << x) {
         group.throughput(Throughput::Elements(size as u64));
         group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, &size| {
-            let test_input = gen_uniform_centroid_random_weight_vec(size);
+            let test_input = gen_uniform_centroid_random_weight_vec::<f64>(size);
             b.iter(|| {
                 let tree = KeyedSumTree::from(&test_input[..]);
                 black_box(tree);
@@ -337,7 +337,7 @@ fn keyed_sum_tree_delete(c: &mut Criterion) {
     for size in (0..15).map(|x| 1 << x) {
         group.throughput(Throughput::Elements(size as u64));
         group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, &size| {
-            let test_input = gen_uniform_centroid_random_weight_vec(size);
+            let test_input = gen_uniform_centroid_random_weight_vec::<f64>(size);
             b.iter(|| {
                 let mut tree = KeyedSumTree::from(&test_input[..]);
                 for input in &test_input {
@@ -375,7 +375,7 @@ fn keyed_sum_tree_sorted_vec_key(c: &mut Criterion) {
     for size in (0..15).map(|x| 1 << x) {
         group.throughput(Throughput::Elements(size as u64));
         group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, &size| {
-            let test_input = gen_uniform_centroid_random_weight_vec(size);
+            let test_input = gen_uniform_centroid_random_weight_vec::<f64>(size);
             let tree = KeyedSumTree::from(&test_input[..]);
             b.iter(|| {
                 black_box(tree.sorted_vec_key());

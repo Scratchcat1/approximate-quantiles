@@ -1,43 +1,58 @@
 use crate::traits::Digest;
+use num_traits::{cast::ToPrimitive, Float};
 
-pub struct LinearDigest {
-    pub values: Vec<f64>,
+pub struct LinearDigest<F>
+where
+    F: Float + ToPrimitive,
+{
+    pub values: Vec<F>,
 }
 
-impl LinearDigest {
+impl<F> LinearDigest<F>
+where
+    F: Float + ToPrimitive,
+{
     pub fn new() -> Self {
         LinearDigest { values: Vec::new() }
     }
 }
 
-impl Digest for LinearDigest {
-    fn add(&mut self, item: f64) {
+impl<F> Digest<F> for LinearDigest<F>
+where
+    F: Float + ToPrimitive,
+{
+    fn add(&mut self, item: F) {
         self.values.push(item);
     }
 
-    fn add_buffer(&mut self, items: &[f64]) {
+    fn add_buffer(&mut self, items: &[F]) {
         self.values.extend(items);
     }
 
-    fn est_quantile_at_value(&mut self, target_value: f64) -> f64 {
-        let less_than = self.values.iter().filter(|x| **x < target_value).count() as f64;
-        let equal_to = self.values.iter().filter(|x| **x == target_value).count() as f64;
-        if equal_to <= 1.0 {
+    fn est_quantile_at_value(&mut self, target_value: F) -> F {
+        let less_than = F::from(self.values.iter().filter(|x| **x < target_value).count()).unwrap();
+        let equal_to = F::from(self.values.iter().filter(|x| **x == target_value).count()).unwrap();
+        if equal_to <= F::from(1.0).unwrap() {
             // If the one or zero such values exist there are not values to the left of the midpoint of values equal to the target value.
-            less_than / self.values.len() as f64
+            less_than / F::from(self.values.len()).unwrap()
         } else {
-            (less_than + equal_to / 2.0) / self.values.len() as f64
+            (less_than + equal_to / F::from(2.0).unwrap()) / F::from(self.values.len()).unwrap()
         }
     }
 
-    fn est_value_at_quantile(&mut self, target_quantile: f64) -> f64 {
-        let target_index = (target_quantile * self.values.len() as f64).round() as usize;
+    fn est_value_at_quantile(&mut self, target_quantile: F) -> F {
+        let f_len = F::from(self.values.len()).unwrap();
+        let target_index = (target_quantile * f_len).round().to_usize().unwrap();
         self.values.sort_by(|a, b| a.partial_cmp(&b).unwrap());
         return if target_index == self.values.len() {
             *self.values.last().unwrap()
         } else {
             self.values[target_index]
         };
+    }
+
+    fn count(&self) -> u64 {
+        self.values.len() as u64
     }
 }
 

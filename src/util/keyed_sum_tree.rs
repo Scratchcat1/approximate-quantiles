@@ -1,19 +1,26 @@
 // use std::cell::RefCell;
 // use std::rc::Rc;
 use crate::t_digest::centroid::Centroid;
+use num_traits::{Float, NumAssignOps};
 use std::cmp::Ordering::{Equal, Greater, Less};
 
 #[derive(Debug)]
-struct KeyedSumNode {
-    key: f64,
-    weight: f64,
-    sum: f64,
-    left_child: Option<Box<KeyedSumNode>>,
-    right_child: Option<Box<KeyedSumNode>>,
+struct KeyedSumNode<F>
+where
+    F: Float,
+{
+    key: F,
+    weight: F,
+    sum: F,
+    left_child: Option<Box<KeyedSumNode<F>>>,
+    right_child: Option<Box<KeyedSumNode<F>>>,
 }
 
-impl KeyedSumNode {
-    pub fn new(key: f64, weight: f64) -> Self {
+impl<F> KeyedSumNode<F>
+where
+    F: Float,
+{
+    pub fn new(key: F, weight: F) -> Self {
         KeyedSumNode {
             key,
             weight,
@@ -23,77 +30,7 @@ impl KeyedSumNode {
         }
     }
 
-    // pub fn less_than_sum(&self, target_key: f64) -> f64 {
-    //     match (
-    //         target_key.partial_cmp(&self.key).unwrap(),
-    //         &self.left_child,
-    //         &self.right_child,
-    //     ) {
-    //         (Less, None, _) => 0.0,
-    //         (Less, Some(left), _) => left.less_than_sum(target_key),
-    //         (Equal, None, _) => 0.0,
-    //         (Equal, Some(left), _) => left.less_than_sum(target_key),
-    //         (Greater, None, None) => self.weight,
-    //         (Greater, Some(left), None) => self.weight + left.sum,
-    //         (Greater, None, Some(right)) => self.weight + right.less_than_sum(target_key),
-    //         (Greater, Some(left), Some(right)) => {
-    //             self.weight + left.sum + right.less_than_sum(target_key)
-    //         }
-    //     }
-    // }
-
-    // pub fn insert(&mut self, insert_key: f64, weight: f64) {
-    //     if insert_key < self.key {
-    //         match &mut self.left_child {
-    //             None => self.left_child = Some(Box::new(KeyedSumNode::new(insert_key, weight))),
-    //             Some(child) => child.insert(insert_key, weight),
-    //         }
-    //     } else if self.key < insert_key {
-    //         match &mut self.right_child {
-    //             None => self.right_child = Some(Box::new(KeyedSumNode::new(insert_key, weight))),
-    //             Some(child) => child.insert(insert_key, weight),
-    //         }
-    //     } else {
-    //         panic!("KeyedSumNode is not designed to have identical key nodes");
-    //     }
-    //     self.sum += weight;
-    // }
-
-    // pub fn update(&mut self, target_key: f64, new_weight: f64) -> Option<f64> {
-    //     return if target_key < self.key {
-    //         match &mut self.left_child {
-    //             None => None,
-    //             Some(child) => {
-    //                 let old_weight_option = child.update(target_key, new_weight);
-    //                 if let Some(old_weight) = old_weight_option {
-    //                     self.sum -= old_weight;
-    //                     self.sum += new_weight;
-    //                 }
-    //                 old_weight_option
-    //             }
-    //         }
-    //     } else if self.key < target_key {
-    //         match &mut self.right_child {
-    //             None => None,
-    //             Some(child) => {
-    //                 let old_weight_option = child.update(target_key, new_weight);
-    //                 if let Some(old_weight) = old_weight_option {
-    //                     self.sum -= old_weight;
-    //                     self.sum += new_weight;
-    //                 }
-    //                 old_weight_option
-    //             }
-    //         }
-    //     } else {
-    //         let old_weight_option = Some(self.weight);
-    //         self.sum -= self.weight;
-    //         self.sum += new_weight;
-    //         self.weight = new_weight;
-    //         old_weight_option
-    //     };
-    // }
-
-    pub fn delete(mut self: Box<Self>, target_key: f64) -> Option<Box<KeyedSumNode>> {
+    pub fn delete(mut self: Box<Self>, target_key: F) -> Option<Box<KeyedSumNode<F>>> {
         match target_key.partial_cmp(&self.key).unwrap() {
             Less => {
                 if let Some(left) = self.left_child.take() {
@@ -126,7 +63,7 @@ impl KeyedSumNode {
     }
 
     //  Returns the rightmost child, unless the node itself is that child.
-    fn rightmost_child(&mut self) -> Option<Box<KeyedSumNode>> {
+    fn rightmost_child(&mut self) -> Option<Box<KeyedSumNode<F>>> {
         match self.right_child {
             Some(ref mut right) => {
                 if let Some(t) = right.rightmost_child() {
@@ -143,7 +80,7 @@ impl KeyedSumNode {
         }
     }
 
-    fn sorted_vec_key(&self, vec: &mut Vec<Centroid>) {
+    fn sorted_vec_key(&self, vec: &mut Vec<Centroid<F>>) {
         if let Some(child) = &self.left_child {
             child.sorted_vec_key(vec);
         }
@@ -153,7 +90,7 @@ impl KeyedSumNode {
         }
     }
 
-    fn closest_keys(&self, target_key: f64, vec: &mut Vec<Centroid>) {
+    fn closest_keys(&self, target_key: F, vec: &mut Vec<Centroid<F>>) {
         vec.push(Centroid {
             mean: self.key,
             weight: self.weight,
@@ -173,7 +110,7 @@ impl KeyedSumNode {
         }
     }
 
-    // pub fn delete(&mut self, target_key: f64) -> Result<f64, ()> {
+    // pub fn delete(&mut self, target_key: F) -> Result<F, ()> {
     //     if target_key < self.key {
     //         return match &mut self.left_child {
     //             None => Err(()),
@@ -211,15 +148,21 @@ impl KeyedSumNode {
 }
 
 #[derive(Debug)]
-pub struct KeyedSumTree {
-    root: Option<Box<KeyedSumNode>>,
+pub struct KeyedSumTree<F>
+where
+    F: Float,
+{
+    root: Option<Box<KeyedSumNode<F>>>,
     size: usize,
 }
 
 // Based on https://codereview.stackexchange.com/questions/133209/binary-tree-implementation-in-rust
 // https://stackoverflow.com/questions/64043682/how-to-write-a-delete-function-for-a-binary-tree-in-rust
-impl KeyedSumTree {
-    // pub fn find(&self, target_key: f64) -> &Option<Box<KeyedSumNode>> {
+impl<F> KeyedSumTree<F>
+where
+    F: Float + NumAssignOps,
+{
+    // pub fn find(&self, target_key: F) -> &Option<Box<KeyedSumNode>> {
     //     let mut current = &self.root;
     //     while let Some(ref node) = *current {
     //         match node.key.partial_cmp(&target_key).unwrap() {
@@ -238,10 +181,10 @@ impl KeyedSumTree {
         }
     }
 
-    pub fn less_than_sum(&self, key: f64) -> Option<f64> {
+    pub fn less_than_sum(&self, key: F) -> Option<F> {
         if let Some(root) = &self.root {
             let mut current = root;
-            let mut sum = 0.0;
+            let mut sum = F::from(0.0).unwrap();
             loop {
                 match (
                     key.partial_cmp(&current.key).unwrap(),
@@ -276,7 +219,7 @@ impl KeyedSumTree {
         }
     }
 
-    // pub fn insert(&mut self, key: f64, weight: f64) {
+    // pub fn insert(&mut self, key: F, weight: F) {
     //     if let Some(root) = &mut self.root {
     //         root.insert(key, weight);
     //     } else {
@@ -284,12 +227,12 @@ impl KeyedSumTree {
     //     }
     // }
 
-    pub fn insert(&mut self, key: f64, weight: f64) {
+    pub fn insert(&mut self, key: F, weight: F) {
         if let Some(root) = &mut self.root {
             // root.insert(key, weight);
             let mut current = root;
             loop {
-                current.sum += weight;
+                current.sum = current.sum + weight;
                 if key < current.key {
                     match current.left_child.is_none() {
                         true => {
@@ -322,7 +265,7 @@ impl KeyedSumTree {
         self.size += 1;
     }
 
-    // pub fn update(&mut self, key: f64, new_weight: f64) -> Option<f64> {
+    // pub fn update(&mut self, key: F, new_weight: F) -> Option<F> {
     //     if let Some(root) = &mut self.root {
     //         root.update(key, new_weight)
     //     } else {
@@ -330,14 +273,14 @@ impl KeyedSumTree {
     //     }
     // }
 
-    pub fn delete(&mut self, target_key: f64) {
+    pub fn delete(&mut self, target_key: F) {
         if let Some(root) = self.root.take() {
             self.root = KeyedSumNode::delete(root, target_key);
         }
         self.size -= 1;
     }
 
-    pub fn sorted_vec_key(&self) -> Vec<Centroid> {
+    pub fn sorted_vec_key(&self) -> Vec<Centroid<F>> {
         if let Some(root) = &self.root {
             let mut vec = Vec::new();
             root.sorted_vec_key(&mut vec);
@@ -347,7 +290,7 @@ impl KeyedSumTree {
         }
     }
 
-    pub fn closest_keys(&self, target_key: f64) -> Vec<Centroid> {
+    pub fn closest_keys(&self, target_key: F) -> Vec<Centroid<F>> {
         if let Some(root) = &self.root {
             let mut vec = Vec::new();
             root.closest_keys(target_key, &mut vec);
@@ -363,7 +306,8 @@ impl KeyedSumTree {
                 .clone();
             vec.into_iter()
                 .filter(|x| {
-                    ((x.mean - target_key).abs() - (min.mean - target_key).abs()).abs() < 0.001
+                    ((x.mean - target_key).abs() - (min.mean - target_key).abs()).abs()
+                        < F::from(0.001).unwrap()
                 })
                 .collect()
         } else {
@@ -376,8 +320,11 @@ impl KeyedSumTree {
     }
 }
 
-impl From<&[Centroid]> for KeyedSumTree {
-    fn from(slice: &[Centroid]) -> Self {
+impl<F> From<&[Centroid<F>]> for KeyedSumTree<F>
+where
+    F: Float + NumAssignOps,
+{
+    fn from(slice: &[Centroid<F>]) -> Self {
         let mut tree = KeyedSumTree::new();
         for centroid in slice {
             tree.insert(centroid.mean, centroid.weight);

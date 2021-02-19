@@ -1,20 +1,35 @@
-use crate::traits::Digest;
+use crate::traits::{Digest, OwnedSize};
+use num_traits::Float;
 
 #[derive(Clone)]
-pub struct BufferedDigest<T>
+pub struct BufferedDigest<T, F>
 where
-    T: Digest,
+    T: Digest<F>,
+    F: Float,
 {
     digest: T,
-    buffer: Vec<f64>,
+    buffer: Vec<F>,
     capacity: usize,
 }
 
-impl<T> BufferedDigest<T>
+impl<T, F> OwnedSize for BufferedDigest<T, F>
 where
-    T: Digest,
+    T: Digest<F> + OwnedSize,
+    F: Float,
 {
-    pub fn new(digest: T, capacity: usize) -> BufferedDigest<T> {
+    fn owned_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+            + std::mem::size_of::<F>() * self.buffer.capacity()
+            + (self.digest.owned_size() - std::mem::size_of::<T>()) // Don't count the size of the digest twice.
+    }
+}
+
+impl<T, F> BufferedDigest<T, F>
+where
+    T: Digest<F>,
+    F: Float,
+{
+    pub fn new(digest: T, capacity: usize) -> BufferedDigest<T, F> {
         BufferedDigest {
             digest,
             buffer: Vec::new(),
@@ -28,18 +43,19 @@ where
     }
 }
 
-impl<T> Digest for BufferedDigest<T>
+impl<T, F> Digest<F> for BufferedDigest<T, F>
 where
-    T: Digest,
+    T: Digest<F>,
+    F: Float,
 {
-    fn add(&mut self, item: f64) {
+    fn add(&mut self, item: F) {
         self.buffer.push(item);
         if self.buffer.len() > self.capacity {
             self.flush();
         }
     }
 
-    fn add_buffer(&mut self, items: &[f64]) {
+    fn add_buffer(&mut self, items: &[F]) {
         items.chunks(self.capacity).for_each(|chunk| {
             self.buffer.extend(chunk);
             if self.buffer.len() > self.capacity {
@@ -48,13 +64,17 @@ where
         })
     }
 
-    fn est_quantile_at_value(&mut self, value: f64) -> f64 {
+    fn est_quantile_at_value(&mut self, value: F) -> F {
         self.flush();
         self.digest.est_quantile_at_value(value)
     }
 
-    fn est_value_at_quantile(&mut self, quantile: f64) -> f64 {
+    fn est_value_at_quantile(&mut self, quantile: F) -> F {
         self.flush();
         self.digest.est_value_at_quantile(quantile)
+    }
+
+    fn count(&self) -> u64 {
+        self.digest.count() + self.buffer.len() as u64
     }
 }
