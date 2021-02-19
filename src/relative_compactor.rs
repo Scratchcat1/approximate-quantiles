@@ -1,7 +1,7 @@
+use crate::t_digest::centroid::Centroid;
 use crate::traits::{Digest, OwnedSize};
-use num_traits::{cast::ToPrimitive, Float};
+use num_traits::{cast::ToPrimitive, Float, NumAssignOps};
 use rand_distr::{Distribution, Uniform};
-use std::cmp::Ordering;
 
 #[derive(Debug, Clone)]
 pub struct RCSketch<F>
@@ -46,7 +46,7 @@ where
 
 impl<F> Digest<F> for RCSketch<F>
 where
-    F: Float + ToPrimitive,
+    F: Float + ToPrimitive + NumAssignOps,
 {
     fn add(&mut self, item: F) {
         // Insert into the bottom buffer
@@ -68,76 +68,16 @@ where
     }
 
     fn est_value_at_quantile(&mut self, target_quantile: F) -> F {
-        // println!(
-        //     "{:?}",
-        //     self.buffers
-        //         .iter()
-        //         .map(|buffer| buffer
-        //             .iter()
-        //             .map(|x| x.to_f64().unwrap())
-        //             .collect::<Vec<f64>>())
-        //         .collect::<Vec<Vec<f64>>>()
-        // );
-        // println!(
-        //     "{:?}",
-        //     self.buffers[0]
-        //         .iter()
-        //         .map(|x| x.to_f64().unwrap())
-        //         .collect::<Vec<f64>>()
-        // );
-        let min = *self
-            .buffers
-            .iter()
-            .map(|buffer| {
-                buffer
-                    .iter()
-                    .min_by(|a, b| a.partial_cmp(b).unwrap())
-                    .unwrap()
-            })
-            .min_by(|a, b| a.partial_cmp(b).unwrap())
-            .unwrap();
-        let max = *self
-            .buffers
-            .iter()
-            .map(|buffer| {
-                buffer
-                    .iter()
-                    .max_by(|a, b| a.partial_cmp(b).unwrap())
-                    .unwrap()
-            })
-            .max_by(|a, b| a.partial_cmp(b).unwrap())
-            .unwrap();
-        let mut start = min;
-        let mut end = max;
-        let mut mid = (start + end) / F::from(2.0).unwrap();
-        // println!("----------------");
-        // Max and min must be used as if start or end == 0 the proportional difference remains around 1.
-        while (end - start).abs() / (min.abs() + max.abs()) > F::from(1e-6).unwrap() {
-            mid = (start + end) / F::from(2.0).unwrap();
-            let current_quantile = self.est_quantile_at_value(mid);
+        let centroids = self.sorted_weighted_values();
+        let mut total_weight = F::from(0.0).unwrap();
 
-            // println!(
-            //     "{} {} {} {} {} {} {} {}",
-            //     target_quantile.to_f64().unwrap(),
-            //     current_quantile.to_f64().unwrap(),
-            //     self.est_quantile_at_value(start).to_f64().unwrap(),
-            //     self.est_quantile_at_value(mid).to_f64().unwrap(),
-            //     self.est_quantile_at_value(end).to_f64().unwrap(),
-            //     start.to_f64().unwrap(),
-            //     mid.to_f64().unwrap(),
-            //     end.to_f64().unwrap()
-            // );
-
-            // Don't return immediately on a match, this avoids high errors when looking for very small quantiles
-            // Example [-100, -4, -3, -2, 0]
-            // First round: mid = -50 and would satisfy q = 0.25 and return -50 instead of -4
-            match current_quantile.partial_cmp(&target_quantile).unwrap() {
-                Ordering::Equal => start = mid,
-                Ordering::Less => start = mid,
-                Ordering::Greater => end = mid,
+        for centroid in &centroids {
+            if centroid.weight + total_weight > target_quantile * F::from(self.count).unwrap() {
+                return centroid.mean;
             }
+            total_weight += centroid.weight;
         }
-        return mid;
+        centroids.last().expect("Sketch is empty").mean
     }
 
     fn count(&self) -> u64 {
@@ -345,26 +285,22 @@ where
         let mut rank = 0;
         for i in 0..self.buffers.len() {
             rank += self.buffers[i].iter().filter(|x| **x <= rank_item).count() * (1 << i);
-            // let less_than = self.buffers[i].iter().filter(|x| **x < rank_item).count() * (1 << i);
-            // let mut cloned_buffer = self.buffers[i].clone();
-            // cloned_buffer.sort_by(|a, b| a.partial_cmp(b).unwrap());
-            // let index = match cloned_buffer.binary_search_by(|x| x.partial_cmp(&rank_item).unwrap())
-            // {
-            //     Ok(index) => index,
-            //     Err(index) => index,
-            // };
-            // // Make sure there are elements to the left and right of the index
-            // if index >= 1 && index < cloned_buffer.len() {
-            //     assert!(cloned_buffer[index] >= rank_item && rank_item >= cloned_buffer[index - 1]);
-            //     rank += (((cloned_buffer[index] - rank_item).to_f64().unwrap()
-            //         / (cloned_buffer[index] - cloned_buffer[index - 1])
-            //             .to_f64()
-            //             .unwrap())
-            //         * (2.0.powi(i as i32))) as usize;
-            // }
-            // rank += (self.buffers[i].iter().filter(|x| **x == rank_item).count() * (1 << i)) / 2;
         }
         rank
+    }
+
+    /// Return sorted vector of centroids for each value in the digest
+    /// Ascending order
+    pub fn sorted_weighted_values(&self) -> Vec<Centroid<F>> {
+        let mut centroids = vec![];
+        for i in 0..self.buffers.len() {
+            centroids.extend(self.buffers[i].iter().map(|x| Centroid {
+                mean: *x,
+                weight: F::from(1 << i).unwrap(),
+            }));
+        }
+        centroids.sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
+        centroids
     }
 }
 
