@@ -271,34 +271,32 @@ where
             self.buffers.push(Vec::with_capacity(self.buffer_size));
             self.compaction_counters.push(0);
         }
-        // Split into two parts so that the buffer is never filled passed the limit.
-        // Since the input from previous compactions can only ever be <= buffer size / 2 only two compactions
-        // are needed even if the current buffer is already full.
-        assert!(items.len() <= self.buffer_size / 2);
-        let (first, second) = match self.buffers[rc_index].len() + items.len() > self.buffer_size {
-            true => items.split_at(self.buffer_size - self.buffers[rc_index].len()),
-            false => (items, &[] as &[F]),
-        };
-        self.buffers[rc_index].extend(first);
-        // If buffer is full compact and insert into the next buffer
-        // Buffer may be overfilled since more than one item was added so keep compacting until size is below the buffer size.
-        while self.buffers[rc_index].len() >= self.buffer_size {
-            let compaction_index = if fast_compaction {
-                self.get_compact_index_fast()
-            } else {
-                self.get_compact_index(rc_index)
-            };
-            let output_items = self.compact(rc_index, compaction_index, compaction_method);
-            self.insert_at_rc_batch(
-                &output_items,
-                rc_index + 1,
-                fast_compaction,
-                compaction_method,
+
+        // Copy the maximum number of items into the buffer each loop
+        let mut current_index = 0;
+        while current_index < items.len() {
+            let end = usize::min(
+                current_index + (self.buffer_size - self.buffers[rc_index].len()),
+                items.len(),
             );
-        }
-        // Add the second half of the elements if necessary
-        if !second.is_empty() {
-            self.insert_at_rc_batch(second, rc_index, fast_compaction, compaction_method);
+            self.buffers[rc_index].extend(&items[current_index..end]);
+            current_index = end;
+            // If buffer is full compact and insert into the next buffer
+            // Buffer may be overfilled since more than one item was added so keep compacting until size is below the buffer size.
+            while self.buffers[rc_index].len() >= self.buffer_size {
+                let compaction_index = if fast_compaction {
+                    self.get_compact_index_fast()
+                } else {
+                    self.get_compact_index(rc_index)
+                };
+                let output_items = self.compact(rc_index, compaction_index, compaction_method);
+                self.insert_at_rc_batch(
+                    &output_items,
+                    rc_index + 1,
+                    fast_compaction,
+                    compaction_method,
+                );
+            }
         }
     }
 
