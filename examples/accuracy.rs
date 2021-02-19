@@ -1775,8 +1775,8 @@ where
 }
 
 fn main() {
-    // value_error_against_quantile::<f32>();
-    // quantile_error_against_value::<f32>();
+    value_error_against_quantile::<f32>();
+    quantile_error_against_value::<f32>();
     // determine_required_parameter::<f32>();
     // determine_required_parameter::<f64>();
     // plot_error_against_mem_usage::<f32>();

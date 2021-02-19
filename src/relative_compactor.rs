@@ -1,5 +1,6 @@
+use crate::t_digest::{centroid::Centroid, scale_functions, t_digest::TDigest};
 use crate::traits::{Digest, OwnedSize};
-use num_traits::{cast::ToPrimitive, Float};
+use num_traits::{cast::ToPrimitive, Float, NumAssignOps};
 use rand_distr::{Distribution, Uniform};
 use std::cmp::Ordering;
 
@@ -46,7 +47,7 @@ where
 
 impl<F> Digest<F> for RCSketch<F>
 where
-    F: Float + ToPrimitive,
+    F: Float + ToPrimitive + Send + Sync + NumAssignOps,
 {
     fn add(&mut self, item: F) {
         // Insert into the bottom buffer
@@ -147,7 +148,7 @@ where
 
 impl<F> RCSketch<F>
 where
-    F: Float + ToPrimitive,
+    F: Float + ToPrimitive + Send + Sync + NumAssignOps,
 {
     /// Create a new `RCSketch`
     /// # Arguments
@@ -344,9 +345,17 @@ where
     /// # Arguments
     /// * `rank_item` Item to estimate the rank of
     pub fn interpolate_rank(&self, rank_item: F) -> usize {
-        let mut rank = 0;
+        let mut centroids: Vec<Centroid<F>> = vec![];
         for i in 0..self.buffers.len() {
-            rank += self.buffers[i].iter().filter(|x| **x <= rank_item).count() * (1 << i);
+            centroids.extend(
+                self.buffers[i]
+                    .iter()
+                    .map(|x| Centroid {
+                        mean: *x,
+                        weight: F::from(1 << i).unwrap(),
+                    })
+                    .collect::<Vec<Centroid<F>>>(),
+            );
             // let less_than = self.buffers[i].iter().filter(|x| **x < rank_item).count() * (1 << i);
             // let mut cloned_buffer = self.buffers[i].clone();
             // cloned_buffer.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -366,7 +375,15 @@ where
             // }
             // rank += (self.buffers[i].iter().filter(|x| **x == rank_item).count() * (1 << i)) / 2;
         }
-        rank
+        let mut digest = TDigest::new(
+            scale_functions::k2_asym,
+            scale_functions::inv_k2_asym,
+            F::from(100).unwrap() * F::from(self.k).unwrap(),
+        );
+        digest.add_centroid_buffer(centroids);
+        (digest.est_quantile_at_value(rank_item) * F::from(self.count).unwrap())
+            .to_usize()
+            .unwrap()
     }
 }
 

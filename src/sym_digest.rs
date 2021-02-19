@@ -88,12 +88,12 @@ mod test {
     use crate::util::gen_asc_vec;
     use crate::util::linear_digest::LinearDigest;
     use approx::assert_relative_eq;
-    use num_traits::Float;
+    use num_traits::{Float, NumAssignOps};
     use rand::distributions::{Distribution, Uniform};
 
     fn new_symdigest<F>(input_size: usize, acc_param: usize) -> SymDigest<RCSketch<F>>
     where
-        F: Float,
+        F: Float + Send + Sync + NumAssignOps,
     {
         SymDigest::new(
             RCSketch::new(input_size, acc_param),
