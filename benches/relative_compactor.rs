@@ -123,6 +123,20 @@ fn relative_compactor_compression_comparison_uniform_range(c: &mut Criterion) {
     // group.plot_config(plot_config);
     for size in (15..22).map(|x| 1 << x) {
         group.throughput(Throughput::Elements(size as u64));
+        group.bench_with_input(BenchmarkId::new("k-4", size), &size, |b, &size| {
+            let test_input = gen_uniform_vec::<f64>(size);
+            b.iter(|| {
+                let mut sketch = RCSketch::new(size as usize, 4);
+                sketch.add_buffer(&test_input);
+            });
+        });
+        group.bench_with_input(BenchmarkId::new("k-16", size), &size, |b, &size| {
+            let test_input = gen_uniform_vec::<f64>(size);
+            b.iter(|| {
+                let mut sketch = RCSketch::new(size as usize, 16);
+                sketch.add_buffer(&test_input);
+            });
+        });
         group.bench_with_input(BenchmarkId::new("k-64", size), &size, |b, &size| {
             let test_input = gen_uniform_vec::<f64>(size);
             b.iter(|| {

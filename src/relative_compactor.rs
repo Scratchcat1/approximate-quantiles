@@ -10,18 +10,18 @@ where
 {
     /// Vector of relative compactors
     pub buffers: Vec<Vec<F>>,
-    // /// Upper bound on the number of inputs expected
-    // pub input_length: usize,
-    /// Number of elements in the compactor
-    pub nom_size: usize,
+    /// Number of elements in the sketch
+    pub sketch_size: usize,
     /// Parameter controlling error and buffer size
     pub k: usize,
-    /// Size of the buffers
-    pub buffer_size: usize,
     /// Number of items seen
     pub count: u64,
     /// Compaction counter
     pub compaction_counters: Vec<u32>,
+    /// Num sections
+    pub number_of_sections: Vec<u32>,
+    /// Section sizes in float form
+    pub section_sizes: Vec<f32>,
 }
 
 #[derive(Copy, Debug, Clone)]
@@ -42,7 +42,8 @@ where
                 .iter()
                 .map(|buffer| std::mem::size_of::<F>() * buffer.capacity())
                 .sum::<usize>()
-            + std::mem::size_of::<u32>() * self.compaction_counters.capacity()
+            + self.compaction_counters.capacity()
+                * (std::mem::size_of::<u32>() * 3 + std::mem::size_of::<f32>())
     }
 }
 
@@ -52,16 +53,14 @@ where
 {
     fn add(&mut self, item: F) {
         // Insert into the bottom buffer
-        self.insert_at_rc(item, 0, false, CompactionMethod::Default);
+        self.insert(item, false, CompactionMethod::Default);
         self.count += 1;
     }
 
     fn add_buffer(&mut self, items: &[F]) {
         let length = items.len() as u64;
         // Insert into the bottom buffer
-        items
-            .chunks(self.buffer_size / 2)
-            .for_each(|chunk| self.insert_at_rc_batch(chunk, 0, false, CompactionMethod::Default));
+        self.insert_batch(items, false, CompactionMethod::Default);
         self.count += length;
     }
 
@@ -96,25 +95,34 @@ where
     /// * `input_length` Upper bound on the number of inputs expected.
     /// * `k` Parameter controlling error and buffer size
     pub fn new(input_length: usize, k: usize) -> RCSketch<F> {
-        RCSketch {
+        let mut sketch = RCSketch {
             buffers: Vec::new(),
             k,
-            nom_size: 0,
-            buffer_size: Self::calc_buffer_size(input_length, k),
+            sketch_size: 0,
             count: 0,
             compaction_counters: Vec::new(),
-        }
+            number_of_sections: Vec::new(),
+            section_sizes: Vec::new(),
+        };
+        sketch.grow();
+        sketch
     }
 
-    pub fn calc_buffer_size(input_length: usize, k: usize) -> usize {
-        return usize::max(
-            (F::from(2.0).unwrap()
-                * F::from(k).unwrap()
-                * F::from(input_length / k).unwrap().log2().ceil())
-            .to_usize()
-            .unwrap_or(0),
-            2 * k,
-        );
+    /// Calculate the capacity of a buffer
+    /// # Arguments
+    /// * `h` Index of the buffer
+    pub fn calc_buffer_size(&self, h: usize) -> usize {
+        return (2 * self.number_of_sections[h] * self.section_sizes[h] as u32) as usize;
+    }
+
+    /// Update the number and size of sections of a buffer
+    /// # Arguments
+    /// `h` Index of the buffer
+    pub fn update_sections(&mut self, h: usize) {
+        if self.compaction_counters[h] as f32 >= 2.0.powi(self.number_of_sections[h] as i32 - 1) {
+            self.number_of_sections[h] *= 2;
+            self.section_sizes[h] /= 2.0.sqrt();
+        }
     }
 
     /// Determine the compaction index using an exponential distribution
@@ -123,8 +131,11 @@ where
     /// * `rc_index` Index of the buffer to determine the compaction index of
     pub fn get_compact_index(&mut self, rc_index: usize) -> usize {
         // Determine the index to remove after
-        let compact_index = self.buffers[rc_index].len()
-            - (self.compaction_counters[rc_index].trailing_ones() as usize + 1) * self.k;
+        let compact_index = self.buffers[rc_index].len() / 2
+            + (self.number_of_sections[rc_index] as usize
+                - self.compaction_counters[rc_index].trailing_ones() as usize
+                - 1)
+                * self.section_sizes[rc_index] as usize;
         self.compaction_counters[rc_index] += 1;
         return compact_index;
     }
@@ -134,8 +145,8 @@ where
     /// # Arguments
     /// * `rc_index` Index of the buffer to determine the compaction index of
     #[inline]
-    pub fn get_compact_index_fast(&self) -> usize {
-        return self.buffer_size / 2;
+    pub fn get_compact_index_fast(&self, h: usize) -> usize {
+        return self.calc_buffer_size(h) / 2;
     }
 
     pub fn add_buffer_fast(&mut self, items: &[F]) {
@@ -153,92 +164,91 @@ where
     ) {
         let length = items.len() as u64;
         // Insert into the bottom buffer
-        items.chunks(self.buffer_size / 2).for_each(|chunk| {
-            self.insert_at_rc_batch(chunk, 0, fast_compaction, compaction_method)
-        });
+        self.insert_batch(items, fast_compaction, compaction_method);
         self.count += length;
     }
 
-    /// Insert an item into a particular buffer in the sketch
+    /// Insert an item into the sketch
     /// # Arguments
     /// * `item` The item to insert
-    /// * `rc_index` The index of the buffer to insert at
     /// * `fast_compaction` Enables faster compaction in exchange for potentially increased error
     /// * `compaction_method` The method with which to compact the removed elements
-    pub fn insert_at_rc(
-        &mut self,
-        item: F,
-        rc_index: usize,
-        fast_compaction: bool,
-        compaction_method: CompactionMethod,
-    ) {
-        // Create a new buffer if required
-        if self.buffers.len() <= rc_index {
-            self.buffers.push(Vec::with_capacity(self.buffer_size));
-            self.compaction_counters.push(0);
-        }
-        self.buffers[rc_index].push(item);
-        self.nom_size += 1;
-        // If buffer is full compact and insert into the next buffer
-        if self.nom_size >= self.buffer_size * self.buffers.len() {
+    pub fn insert(&mut self, item: F, fast_compaction: bool, compaction_method: CompactionMethod) {
+        self.buffers[0].push(item);
+        self.sketch_size += 1;
+        // If the sketch is full compress
+        if self.sketch_size >= self.get_sketch_capacity() {
             self.compress(fast_compaction, compaction_method);
         }
     }
 
-    /// Insert multiple items into a particular buffer in the sketch
+    /// Insert multiple items into the sketch
     /// # Arguments
     /// * `items` The items to insert
-    /// * `rc_index` The index of the buffer to insert at
     /// * `fast_compaction` Enables faster compaction in exchange for potentially increased error
     /// * `compaction_method` The method with which to compact the removed elements
-    pub fn insert_at_rc_batch(
+    pub fn insert_batch(
         &mut self,
         items: &[F],
-        rc_index: usize,
         fast_compaction: bool,
         compaction_method: CompactionMethod,
     ) {
-        // Create a new buffer if required
-        if self.buffers.len() <= rc_index {
-            self.buffers.push(Vec::with_capacity(self.buffer_size));
-            self.compaction_counters.push(0);
-        }
-
         // Copy the maximum number of items into the buffer each loop
         let mut current_index = 0;
         while current_index < items.len() {
+            assert!(self.get_sketch_capacity() >= self.sketch_size);
             let end = usize::min(
-                current_index + (self.buffer_size * self.buffers.len() - self.nom_size),
+                current_index + (self.get_sketch_capacity() - self.sketch_size),
                 items.len(),
             );
-            self.buffers[rc_index].extend(&items[current_index..end]);
-            self.nom_size += end - current_index;
+            self.buffers[0].extend(&items[current_index..end]);
+            self.sketch_size += end - current_index;
             current_index = end;
-            // If buffer is full compact and insert into the next buffer
-            // Buffer may be overfilled since more than one item was added so keep compacting until size is below the buffer size.
-            if self.nom_size >= self.buffer_size * self.buffers.len() {
+            // If sketch is full compact and insert into the next buffer
+            if self.sketch_size >= self.get_sketch_capacity() {
                 self.compress(fast_compaction, compaction_method);
             }
         }
     }
 
+    /// Get the capacity the entire sketch
+    /// Sum of the capacity of all the buffers
+    pub fn get_sketch_capacity(&self) -> usize {
+        return (0..self.buffers.len())
+            .map(|i| self.calc_buffer_size(i))
+            .sum();
+    }
+
+    /// Compact all buffers which exceed the buffer's capacity
+    /// * `fast_compaction` Enables faster compaction in exchange for potentially increased error
+    /// * `compaction_method` The method with which to compact the removed elements
     pub fn compress(&mut self, fast_compaction: bool, compaction_method: CompactionMethod) {
         for h in 0..self.buffers.len() {
-            if self.buffers[h].len() >= self.buffer_size {
+            if self.buffers[h].len() >= self.calc_buffer_size(h) {
                 let compaction_index = if fast_compaction {
-                    self.get_compact_index_fast()
+                    self.get_compact_index_fast(h)
                 } else {
                     self.get_compact_index(h)
                 };
                 let output_items = self.compact(h, compaction_index, compaction_method);
-                self.nom_size += output_items.len();
+                self.update_sections(h);
                 if self.buffers.len() == h + 1 {
-                    self.buffers.push(Vec::with_capacity(self.buffer_size));
-                    self.compaction_counters.push(0);
+                    self.grow();
                 }
+                self.sketch_size += output_items.len();
                 self.buffers[h + 1].extend(output_items);
             }
         }
+    }
+
+    /// Add a new buffer layer
+    pub fn grow(&mut self) {
+        self.compaction_counters.push(0);
+        self.number_of_sections.push(3);
+        self.section_sizes.push(self.k as f32);
+        self.buffers.push(Vec::with_capacity(
+            self.calc_buffer_size(self.buffers.len()),
+        ));
     }
 
     /// Compact a particular buffer and return the output
@@ -255,7 +265,7 @@ where
         // Sort and extract the largest values
         self.buffers[rc_index].sort_by(|a, b| a.partial_cmp(&b).unwrap());
         let upper = self.buffers[rc_index].split_off(compact_index);
-        self.nom_size -= upper.len();
+        self.sketch_size -= upper.len();
 
         match compaction_method {
             CompactionMethod::Default => {
