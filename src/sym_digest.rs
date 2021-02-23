@@ -82,7 +82,7 @@ impl<D> SymDigest<D> {
 
 #[cfg(test)]
 mod test {
-    use crate::relative_compactor::RCSketch;
+    use crate::rc_sketch::rc_sketch::RCSketch;
     use crate::sym_digest::SymDigest;
     use crate::traits::Digest;
     use crate::util::gen_asc_vec;

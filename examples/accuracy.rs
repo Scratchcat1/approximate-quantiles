@@ -1,5 +1,7 @@
 use approximate_quantiles::parallel_digest::ParallelDigest;
-use approximate_quantiles::relative_compactor::{CompactionMethod, RCSketch};
+use approximate_quantiles::rc_sketch::{
+    compaction_method::CompactionMethod, rc_sketch::RCSketch, rc_sketch2::RCSketch2,
+};
 use approximate_quantiles::sym_digest::SymDigest;
 use approximate_quantiles::t_digest::{scale_functions, t_digest::TDigest};
 use approximate_quantiles::traits::{Digest, OwnedSize};
@@ -563,6 +565,15 @@ where
             digest
         }
     };
+
+    let create_rcsketch2 = |accuracy_param: T| {
+        move |dataset: &[T]| {
+            let mut digest = RCSketch2::new(accuracy_param.to_usize().unwrap());
+            digest.add_buffer(dataset);
+            digest
+        }
+    };
+
     let create_compact_avg_rcsketch = |accuracy_param: T| {
         move |dataset: &[T]| {
             let mut digest = RCSketch::new(dataset.len(), accuracy_param.to_usize().unwrap());
@@ -594,6 +605,10 @@ where
         let digest = create_rcsketch(rcsketch_param)(&gen_uniform_tan_vec(input_size));
         digest.owned_size()
     };
+    let rc_sketch2_mem_size = {
+        let digest = create_rcsketch2(rcsketch_param)(&gen_uniform_tan_vec(input_size));
+        digest.owned_size()
+    };
     let t_digest_mem_size = {
         let digest = create_t_digest(t_digest_param)(&gen_uniform_tan_vec(input_size));
         digest.owned_size()
@@ -619,6 +634,26 @@ where
             name: format!("RC Sketch ({} bytes)", rc_sketch_mem_size),
             datapoints: s,
             colour: &RED,
+            marker: None,
+        });
+
+        let mut s = Vec::new();
+        for i in &quantiles {
+            let accuracy_measurements = sample_digest_accuracy(
+                create_rcsketch2(rcsketch_param),
+                || dataset_func(input_size),
+                test_func(T::from(*i).unwrap()),
+                error_func,
+                100,
+            )
+            .unwrap();
+            s.push((T::from(*i).unwrap(), accuracy_measurements));
+        }
+
+        series.push(Line {
+            name: format!("RC Sketch2 ({} bytes)", rc_sketch2_mem_size),
+            datapoints: s,
+            colour: &MAGENTA,
             marker: None,
         });
 
@@ -701,6 +736,14 @@ where
         }
     };
 
+    let create_rcsketch2 = |accuracy_param: T| {
+        move |dataset: &[T]| {
+            let mut digest = RCSketch2::new(accuracy_param.to_usize().unwrap());
+            digest.add_buffer(dataset);
+            digest
+        }
+    };
+
     let create_compact_avg_rcsketch = |accuracy_param: T| {
         move |dataset: &[T]| {
             let mut digest = RCSketch::new(dataset.len(), accuracy_param.to_usize().unwrap());
@@ -739,6 +782,10 @@ where
         let digest = create_rcsketch(rcsketch_param)(&gen_uniform_tan_vec(input_size));
         digest.owned_size()
     };
+    let rc_sketch2_mem_size = {
+        let digest = create_rcsketch2(rcsketch_param)(&gen_uniform_tan_vec(input_size));
+        digest.owned_size()
+    };
     let t_digest_mem_size = {
         let digest = create_t_digest(t_digest_param)(&gen_uniform_tan_vec(input_size));
         digest.owned_size()
@@ -766,6 +813,26 @@ where
             name: format!("RCSketch ({} bytes)", rc_sketch_mem_size),
             datapoints: s,
             colour: &RED,
+            marker: None,
+        });
+
+        let mut s = Vec::new();
+        for i in &test_values {
+            let accuracy_measurements = sample_digest_accuracy(
+                create_rcsketch2(rcsketch_param),
+                || dataset_func(input_size),
+                test_func(T::from(*i).unwrap()),
+                error_func,
+                100,
+            )
+            .unwrap();
+            s.push((T::from(*i).unwrap(), accuracy_measurements));
+        }
+
+        series.push(Line {
+            name: format!("RCSketch2 ({} bytes)", rc_sketch2_mem_size),
+            datapoints: s,
+            colour: &MAGENTA,
             marker: None,
         });
 
@@ -1680,6 +1747,12 @@ where
         digest
     };
 
+    let create_rcsketch2 = |dataset: &[T], param: T| {
+        let mut digest = RCSketch2::new(param.to_usize().unwrap());
+        digest.add_buffer(dataset);
+        digest
+    };
+
     let create_t_digest = |dataset: &[T], param: T| {
         let mut digest = TDigest::new(&scale_functions::k2, &scale_functions::inv_k2, param);
         dataset
@@ -1709,9 +1782,31 @@ where
     }
 
     series.push(Line {
-        name: "RC Sketch param".to_string(),
+        name: format!("RC Sketch param = {}", rc_sketch_param.to_f64().unwrap()),
         datapoints: s,
         colour: &RED,
+        marker: None,
+    });
+
+    let mut s = Vec::new();
+    for input_size in &input_sizes {
+        let x = create_rcsketch2(&gen_uniform_vec(*input_size), rc_sketch_param);
+        println!(
+            "RC Sketch2 n = {}, param = {}, size: {} bytes",
+            input_size,
+            rc_sketch_param.to_f64().unwrap(),
+            x.owned_size()
+        );
+        s.push((
+            T::from(*input_size).unwrap(),
+            vec![T::from(x.owned_size()).unwrap()],
+        ));
+    }
+
+    series.push(Line {
+        name: format!("RC Sketch2 param = {}", rc_sketch_param.to_f64().unwrap()),
+        datapoints: s,
+        colour: &MAGENTA,
         marker: None,
     });
 
@@ -1731,7 +1826,7 @@ where
     }
 
     series.push(Line {
-        name: "T-Digest".to_string(),
+        name: format!("T-Digest param = {}", t_digest_param.to_f64().unwrap()),
         datapoints: s,
         colour: &BLUE,
         marker: None,
@@ -1775,15 +1870,15 @@ where
 }
 
 fn main() {
-    // value_error_against_quantile::<f32>();
-    // quantile_error_against_value::<f32>();
+    value_error_against_quantile::<f32>();
+    quantile_error_against_value::<f32>();
     // determine_required_parameter::<f32>();
     // determine_required_parameter::<f64>();
     // plot_error_against_mem_usage::<f32>();
     // plot_error_against_mem_usage_parallel::<f32>();
-    plot_error_against_quantiles_full_range::<f32>();
+    // plot_error_against_quantiles_full_range::<f32>();
     // plot_error_against_input_size::<f32>();
     // plot_memory_usage_against_compression_parameter::<f32>();
-    // plot_memory_usage_against_input_size::<f32>();
+    plot_memory_usage_against_input_size::<f32>();
     println!("Complete");
 }

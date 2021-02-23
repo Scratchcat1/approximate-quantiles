@@ -1,3 +1,4 @@
+use crate::rc_sketch::compaction_method::CompactionMethod;
 use crate::t_digest::centroid::Centroid;
 use crate::traits::{Digest, OwnedSize};
 use num_traits::{cast::ToPrimitive, Float, NumAssignOps};
@@ -20,12 +21,6 @@ where
     pub count: u64,
     /// Compaction counter
     pub compaction_counters: Vec<u32>,
-}
-
-#[derive(Copy, Debug, Clone)]
-pub enum CompactionMethod {
-    Default,
-    AverageNeighbour,
 }
 
 impl<F> OwnedSize for RCSketch<F>
@@ -306,7 +301,7 @@ where
 
 #[cfg(test)]
 mod test {
-    use crate::relative_compactor::RCSketch;
+    use crate::rc_sketch::rc_sketch::RCSketch;
     use crate::traits::Digest;
     use crate::util::gen_asc_vec;
     use crate::util::linear_digest::LinearDigest;
