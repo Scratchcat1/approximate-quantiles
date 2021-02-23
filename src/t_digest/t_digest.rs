@@ -340,7 +340,7 @@ where
             // If combined weight is below the limit merge the centroids
             if new_w <= w_size_limit {
                 mergeable_weight = new_w;
-                mergeable_sum = mergeable_sum + next_centroid.mean * next_centroid.weight;
+                mergeable_sum += next_centroid.mean * next_centroid.weight;
             } else {
                 // Combined weight exceeds limit, add the current centroid to the vector and calculate the new limit
                 w0 = w0 + mergeable_weight;

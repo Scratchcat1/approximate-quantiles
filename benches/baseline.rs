@@ -272,7 +272,7 @@ fn mergesort_uniform_range(c: &mut Criterion) {
     // group.plot_config(plot_config);
     for size in (0..20).map(|x| 1 << x) {
         group.throughput(Throughput::Elements(size as u64));
-        group.bench_with_input(BenchmarkId::new("sort_by", size), &size, |b, &size| {
+        group.bench_with_input(BenchmarkId::new("f64_sort_by", size), &size, |b, &size| {
             let test_input = gen_uniform_vec::<f64>(size);
             b.iter(|| {
                 let mut input_copy = test_input.clone();
@@ -281,11 +281,48 @@ fn mergesort_uniform_range(c: &mut Criterion) {
             });
         });
 
-        group.bench_with_input(BenchmarkId::new("par_sort_by", size), &size, |b, &size| {
-            let test_input = gen_uniform_vec::<f64>(size);
+        group.bench_with_input(
+            BenchmarkId::new("f64_par_sort_by", size),
+            &size,
+            |b, &size| {
+                let test_input = gen_uniform_vec::<f64>(size);
+                b.iter(|| {
+                    let mut input_copy = test_input.clone();
+                    input_copy.par_sort_by(|a, b| a.partial_cmp(&b).unwrap());
+                    black_box(input_copy);
+                });
+            },
+        );
+
+        group.bench_with_input(BenchmarkId::new("f32", size), &size, |b, &size| {
+            let test_input = gen_uniform_vec::<f32>(size);
             b.iter(|| {
                 let mut input_copy = test_input.clone();
-                input_copy.par_sort_by(|a, b| a.partial_cmp(&b).unwrap());
+                input_copy.sort_by(|a, b| a.partial_cmp(&b).unwrap());
+                black_box(input_copy);
+            });
+        });
+
+        group.bench_with_input(BenchmarkId::new("u64", size), &size, |b, &size| {
+            let test_input = gen_uniform_vec::<f64>(size)
+                .into_iter()
+                .map(|x| (x * 1000.0) as u64)
+                .collect::<Vec<u64>>();
+            b.iter(|| {
+                let mut input_copy = test_input.clone();
+                input_copy.sort();
+                black_box(input_copy);
+            });
+        });
+
+        group.bench_with_input(BenchmarkId::new("u32", size), &size, |b, &size| {
+            let test_input = gen_uniform_vec::<f64>(size)
+                .into_iter()
+                .map(|x| (x * 1000.0) as u32)
+                .collect::<Vec<u32>>();
+            b.iter(|| {
+                let mut input_copy = test_input.clone();
+                input_copy.sort();
                 black_box(input_copy);
             });
         });
