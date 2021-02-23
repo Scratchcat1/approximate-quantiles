@@ -49,7 +49,7 @@ where
 
 impl<F> Digest<F> for RCSketch<F>
 where
-    F: Float + ToPrimitive + NumAssignOps,
+    F: Float + NumAssignOps,
 {
     fn add(&mut self, item: F) {
         // Insert into the bottom buffer
@@ -131,11 +131,11 @@ where
     /// * `rc_index` Index of the buffer to determine the compaction index of
     pub fn get_compact_index(&mut self, rc_index: usize) -> usize {
         // Determine the index to remove after
+        let num_compaction_sections = self.number_of_sections[rc_index] as usize
+            - self.compaction_counters[rc_index].trailing_ones() as usize
+            - 1;
         let compact_index = self.buffers[rc_index].len() / 2
-            + (self.number_of_sections[rc_index] as usize
-                - self.compaction_counters[rc_index].trailing_ones() as usize
-                - 1)
-                * self.section_sizes[rc_index] as usize;
+            + num_compaction_sections * self.section_sizes[rc_index] as usize;
         self.compaction_counters[rc_index] += 1;
         return compact_index;
     }
@@ -230,7 +230,7 @@ where
                 } else {
                     self.get_compact_index(h)
                 };
-                let output_items = self.compact(h, compaction_index, compaction_method);
+                let output_items = self.compact_buffer(h, compaction_index, compaction_method);
                 self.update_sections(h);
                 if self.buffers.len() == h + 1 {
                     self.grow();
@@ -256,7 +256,7 @@ where
     /// * `rc_index` Index of the buffer to compact
     /// * `compact_index` Index after which to compact
     /// * `compaction_method` The method with which to compact the removed elements
-    pub fn compact(
+    pub fn compact_buffer(
         &mut self,
         rc_index: usize,
         compact_index: usize,
