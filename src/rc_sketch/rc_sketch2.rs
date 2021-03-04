@@ -234,6 +234,7 @@ where
                 self.buffers[h + 1].extend(output_items);
             }
         }
+        self.buffers[0].shrink_to_fit();
     }
 
     /// Add a new buffer layer
@@ -241,9 +242,7 @@ where
         self.compaction_counters.push(0);
         self.number_of_sections.push(3);
         self.section_sizes.push(self.k as f32);
-        self.buffers.push(Vec::with_capacity(
-            self.calc_buffer_size(self.buffers.len()),
-        ));
+        self.buffers.push(Vec::new());
     }
 
     /// Compact a particular buffer and return the output
