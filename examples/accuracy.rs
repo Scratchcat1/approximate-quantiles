@@ -892,12 +892,15 @@ where
     }
 }
 
+// T Only controls RC Sketch, force 64 bit t digest
 fn plot_error_against_mem_usage<T>()
 where
     T: Float + Send + Sync + NumAssignOps + std::fmt::Debug,
 {
     let test_func =
         |value: T| move |digest: &mut dyn Digest<T>| digest.est_value_at_quantile(value);
+    let test_funcf64 =
+        |value: f64| move |digest: &mut dyn Digest<f64>| digest.est_value_at_quantile(value);
 
     let error_func = |a, b| {
         T::max(
@@ -914,8 +917,8 @@ where
         }
     };
 
-    let create_t_digest = |compression_param: T| {
-        move |dataset: &[T]| {
+    let create_t_digest = |compression_param: f64| {
+        move |dataset: &[f64]| {
             let mut digest = TDigest::new(
                 &scale_functions::k2,
                 &scale_functions::inv_k2,
@@ -934,8 +937,8 @@ where
         .collect::<Vec<T>>();
     let t_digest_test_values = (4..14)
         // .iter()
-        .map(|x| T::from(1 << x).unwrap())
-        .collect::<Vec<T>>();
+        .map(|x| (1 << x) as f64)
+        .collect::<Vec<f64>>();
 
     let quantiles = [
         (1e-5, "X"),
@@ -978,35 +981,50 @@ where
                 ));
             }
 
-            series.push(Line {
-                name: format!("RCSketch, q = 1e{:?}", quantile.log10().to_i32().unwrap()),
-                datapoints: s,
-                colour: &RED,
-                marker: Some(marker.clone()),
-            });
+            series.push(
+                Line {
+                    name: format!("RCSketch, q = 1e{:?}", quantile.log10().to_i32().unwrap()),
+                    datapoints: s,
+                    colour: &RED,
+                    marker: Some(marker.clone()),
+                }
+                .into_line_f64(),
+            );
 
             let mut s = Vec::new();
             for t_digest_param in &t_digest_test_values {
                 let accuracy_measurements = sample_digest_accuracy(
                     create_t_digest(*t_digest_param),
-                    || dataset_func(input_size),
-                    test_func(*quantile),
-                    error_func,
+                    || {
+                        dataset_func(input_size)
+                            .into_iter()
+                            .map(|x| x.to_f64().unwrap())
+                            .collect::<Vec<f64>>()
+                    },
+                    test_funcf64((*quantile).to_f64().unwrap()),
+                    |a, b| {
+                        error_func(T::from(a).unwrap(), T::from(b).unwrap())
+                            .to_f64()
+                            .unwrap()
+                    },
                     100,
                 )
                 .unwrap();
                 s.push((
-                    T::from(t_digest_mem_size(*t_digest_param)).unwrap(),
+                    t_digest_mem_size(*t_digest_param) as f64,
                     accuracy_measurements,
                 ));
             }
 
-            series.push(Line {
-                name: format!("t-Digest, q = 1e{:?}", quantile.log10().to_i32().unwrap()),
-                datapoints: s,
-                colour: &BLUE,
-                marker: Some(marker.clone()),
-            });
+            series.push(
+                Line {
+                    name: format!("t-Digest, q = 1e{:?}", quantile.log10().to_i32().unwrap()),
+                    datapoints: s,
+                    colour: &BLUE,
+                    marker: Some(marker.clone()),
+                }
+                .into_line_f64(),
+            );
         }
         plot_line_graph(
             &format!(
@@ -1870,11 +1888,11 @@ where
 }
 
 fn main() {
-    value_error_against_quantile::<f32>();
-    quantile_error_against_value::<f32>();
+    // value_error_against_quantile::<f32>();
+    // quantile_error_against_value::<f32>();
     // determine_required_parameter::<f32>();
     // determine_required_parameter::<f64>();
-    // plot_error_against_mem_usage::<f32>();
+    plot_error_against_mem_usage::<f32>();
     // plot_error_against_mem_usage_parallel::<f32>();
     // plot_error_against_quantiles_full_range::<f32>();
     // plot_error_against_input_size::<f32>();
