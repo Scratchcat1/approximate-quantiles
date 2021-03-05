@@ -951,7 +951,7 @@ where
     .map(|(q, marker)| (T::from(*q).unwrap(), marker.to_string()))
     .collect::<Vec<(T, String)>>();
 
-    let input_size = 100_000;
+    let input_size = 1_000_000;
     let rc_sketch_mem_size = |param| {
         let digest = create_rcsketch(param)(&gen_uniform_tan_vec(input_size));
         digest.owned_size()
