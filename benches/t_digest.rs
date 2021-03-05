@@ -169,13 +169,13 @@ fn t_digest_comparison_uniform_range(c: &mut Criterion) {
             });
         });
 
-        group.bench_with_input(BenchmarkId::new("add_cluster", size), &size, |b, &size| {
-            let test_input = gen_uniform_centroid_vec(size);
-            b.iter(|| {
-                let mut digest = TDigest::new(&k1, &inv_k1, black_box(50.0));
-                digest.add_cluster(test_input.clone(), 10.0);
-            });
-        });
+//        group.bench_with_input(BenchmarkId::new("add_cluster", size), &size, |b, &size| {
+//            let test_input = gen_uniform_centroid_vec(size);
+//            b.iter(|| {
+//                let mut digest = TDigest::new(&k1, &inv_k1, black_box(50.0));
+//                digest.add_cluster(test_input.clone(), 10.0);
+//            });
+//        });
 
         group.bench_with_input(BenchmarkId::new("buffered", size), &size, |b, &size| {
             let test_input = gen_uniform_vec(size);
