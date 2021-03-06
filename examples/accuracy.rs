@@ -953,7 +953,7 @@ where
     .map(|(q, marker)| (f64::from(*q), marker.to_string()))
     .collect::<Vec<(f64, String)>>();
 
-    let input_size = 100_000;
+    let input_size = 10_000_000;
     let rc_sketch_mem_size = |param| {
         let digest = create_rcsketch(param)(&gen_uniform_tan_vec(input_size));
         digest.owned_size()
@@ -974,7 +974,7 @@ where
                     || dataset_func(input_size),
                     test_func(T::from(*quantile).unwrap()),
                     error_func,
-                    10,
+                    20,
                 )
                 .unwrap();
                 s.push((
@@ -1005,7 +1005,7 @@ where
                     },
                     test_funcf64(*quantile),
                     error_funcf64,
-                    10,
+                    20,
                 )
                 .unwrap();
                 s.push((
@@ -1870,13 +1870,13 @@ fn relative_error<T>(measured: T, actual: T) -> T
 where
     T: Float,
 {
-    println!(
-        "{} {}  | {} {}",
-        measured.to_f32().unwrap(),
-        actual.to_f32().unwrap(),
-        measured.to_f64().unwrap(),
-        actual.to_f64().unwrap()
-    );
+//    println!(
+//        "{} {}  | {} {}",
+//        measured.to_f32().unwrap(),
+//        actual.to_f32().unwrap(),
+//        measured.to_f64().unwrap(),
+//        actual.to_f64().unwrap()
+//    );
     // if ((measured - actual).abs() / actual.abs() >= T::from(1.0).unwrap()) {
     //     println!(
     //         "Error {} {} {}",
