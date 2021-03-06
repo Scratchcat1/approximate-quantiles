@@ -909,6 +909,8 @@ where
         )
     };
 
+    let error_funcf64 = |a: f64, b: f64| f64::max(1.0, relative_error(a, b) * 1e6);
+
     let create_rcsketch = |accuracy_param: T| {
         move |dataset: &[T]| {
             let mut digest = RCSketch::new(dataset.len(), accuracy_param.to_usize().unwrap());
@@ -948,10 +950,10 @@ where
         (1e-1, "■"),
     ]
     .iter()
-    .map(|(q, marker)| (T::from(*q).unwrap(), marker.to_string()))
-    .collect::<Vec<(T, String)>>();
+    .map(|(q, marker)| (f64::from(*q), marker.to_string()))
+    .collect::<Vec<(f64, String)>>();
 
-    let input_size = 1_000_000;
+    let input_size = 100_000;
     let rc_sketch_mem_size = |param| {
         let digest = create_rcsketch(param)(&gen_uniform_tan_vec(input_size));
         digest.owned_size()
@@ -970,9 +972,9 @@ where
                 let accuracy_measurements = sample_digest_accuracy(
                     create_rcsketch(*rcsketch_param),
                     || dataset_func(input_size),
-                    test_func(*quantile),
+                    test_func(T::from(*quantile).unwrap()),
                     error_func,
-                    100,
+                    10,
                 )
                 .unwrap();
                 s.push((
@@ -983,7 +985,7 @@ where
 
             series.push(
                 Line {
-                    name: format!("RCSketch, q = 1e{:?}", quantile.log10().to_i32().unwrap()),
+                    name: format!("RCSketch, q = 1e{:?}", quantile.log10()),
                     datapoints: s,
                     colour: &RED,
                     marker: Some(marker.clone()),
@@ -1001,13 +1003,9 @@ where
                             .map(|x| x.to_f64().unwrap())
                             .collect::<Vec<f64>>()
                     },
-                    test_funcf64((*quantile).to_f64().unwrap()),
-                    |a, b| {
-                        error_func(T::from(a).unwrap(), T::from(b).unwrap())
-                            .to_f64()
-                            .unwrap()
-                    },
-                    100,
+                    test_funcf64(*quantile),
+                    error_funcf64,
+                    10,
                 )
                 .unwrap();
                 s.push((
@@ -1018,7 +1016,7 @@ where
 
             series.push(
                 Line {
-                    name: format!("t-Digest, q = 1e{:?}", quantile.log10().to_i32().unwrap()),
+                    name: format!("t-Digest, q = 1e{:?}", quantile.log10()),
                     datapoints: s,
                     colour: &BLUE,
                     marker: Some(marker.clone()),
@@ -1872,7 +1870,13 @@ fn relative_error<T>(measured: T, actual: T) -> T
 where
     T: Float,
 {
-    // println!("{} {}", measured, actual);
+    println!(
+        "{} {}  | {} {}",
+        measured.to_f32().unwrap(),
+        actual.to_f32().unwrap(),
+        measured.to_f64().unwrap(),
+        actual.to_f64().unwrap()
+    );
     // if ((measured - actual).abs() / actual.abs() >= T::from(1.0).unwrap()) {
     //     println!(
     //         "Error {} {} {}",
