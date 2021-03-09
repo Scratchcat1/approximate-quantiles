@@ -131,7 +131,6 @@ fn relative_compactor_compression_comparison_uniform_range(c: &mut Criterion) {
     // group.plot_config(plot_config);
     let size = 1 << 20;
     for k in (2..16).map(|x| 1 << x) {
-        group.throughput(Throughput::Elements(size as u64));
         group.bench_with_input(BenchmarkId::new("default", k), &k, |b, &k| {
             let test_input = gen_uniform_vec::<f64>(size);
             b.iter(|| {
