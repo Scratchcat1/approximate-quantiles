@@ -16,16 +16,16 @@ use plotters::prelude::*;
 use std::error::Error;
 use std::path::Path;
 
-const T_DIGEST_CHUNK_SIZE: usize = 1_000_000;
+pub const T_DIGEST_CHUNK_SIZE: usize = 1_000_000;
 
 pub struct Line<'a, T>
 where
     T: Float,
 {
-    name: String,
-    datapoints: Vec<(T, Vec<T>)>,
-    colour: &'a RGBColor,
-    marker: Option<String>,
+    pub name: String,
+    pub datapoints: Vec<(T, Vec<T>)>,
+    pub colour: &'a RGBColor,
+    pub marker: Option<String>,
 }
 
 impl<'a, T> Line<'a, T>
