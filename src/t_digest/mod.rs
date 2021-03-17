@@ -1,3 +1,4 @@
+pub mod avl_t_digest;
 pub mod centroid;
 pub mod par_t_digest;
 pub mod scale_functions;
