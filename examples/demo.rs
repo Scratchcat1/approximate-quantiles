@@ -19,7 +19,7 @@ fn main() {
     let test_func =
         |quantile: f32| move |digest: &mut dyn Digest<f32>| digest.est_value_at_quantile(quantile);
 
-    let error_func = |a, b| a;
+    let error_func = |a, _| a * 1e3;
 
     let create_rcsketch = |accuracy_param: f32| {
         move |dataset: &[f32]| {
