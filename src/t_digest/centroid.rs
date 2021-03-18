@@ -2,7 +2,7 @@ use num_traits::Float;
 use std::ops::Add;
 
 /// Weighted value used in `TDigest`
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Centroid<F>
 where
     F: Float,
@@ -51,5 +51,14 @@ where
             mean: ((self.mean * self.weight) + (other.mean * other.weight)) / new_weight,
             weight: new_weight,
         }
+    }
+}
+
+impl<F> Default for Centroid<F>
+where
+    F: Float,
+{
+    fn default() -> Self {
+        Self::new(F::from(0.0).unwrap(), F::from(0.0).unwrap())
     }
 }

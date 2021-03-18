@@ -1,13 +1,11 @@
 use crate::t_digest::avl_t_digest::node_allocator::NodeAllocator;
+use crate::t_digest::avl_t_digest::tree_aggregate::TreeAggregate;
 use crate::t_digest::avl_t_digest::NIL;
 use std::cmp::Ordering;
 use std::ops::Add;
 
 #[derive(Clone, Debug)]
-pub struct IntAVLTree<T>
-where
-    T: PartialOrd + Copy + Add + Default,
-{
+pub struct IntAVLTree<T> {
     node_allocator: NodeAllocator,
     root: u32,
     parent: Vec<u32>,
@@ -19,7 +17,7 @@ where
 
 impl<T> Default for IntAVLTree<T>
 where
-    T: PartialOrd + Copy + Add + Default,
+    T: Copy + Add + Default + TreeAggregate<T>,
 {
     fn default() -> Self {
         Self::new(16)
@@ -28,7 +26,7 @@ where
 
 impl<T> IntAVLTree<T>
 where
-    T: PartialOrd + Copy + Add + Default,
+    T: Copy + Add + Default + TreeAggregate<T>,
 {
     pub fn new(capacity: usize) -> Self {
         IntAVLTree {
@@ -69,10 +67,22 @@ where
         self.parent[node as usize]
     }
 
+    /// Set the parent of the node
+    #[inline]
+    pub fn set_parent(&mut self, node: u32, item: u32) {
+        self.parent[node as usize] = item;
+    }
+
     /// Return the left child of the node
     #[inline]
     pub fn get_left(&self, node: u32) -> u32 {
         self.left[node as usize]
+    }
+
+    /// Set the left child of the node
+    #[inline]
+    pub fn set_left(&mut self, node: u32, item: u32) {
+        self.left[node as usize] = item;
     }
 
     /// Return the right child of the node
@@ -81,10 +91,22 @@ where
         self.right[node as usize]
     }
 
+    /// Set the right child of the node
+    #[inline]
+    pub fn set_right(&mut self, node: u32, item: u32) {
+        self.right[node as usize] = item;
+    }
+
     /// Return the depth of the node
     #[inline]
     pub fn get_depth(&self, node: u32) -> u8 {
         self.depth[node as usize]
+    }
+
+    /// Set the depth of the node
+    #[inline]
+    pub fn set_depth(&mut self, node: u32, item: u8) {
+        self.depth[node as usize] = item;
     }
 
     /// Assign `item` as data for `node`
@@ -151,21 +173,36 @@ where
         }
     }
 
+    /// Returns the greatest node that is strictly less than `node` or None if not found
+    pub fn prev(&self, mut node: u32) -> Option<u32> {
+        let left = self.get_left(node);
+        if left != NIL {
+            return self.last(left);
+        } else {
+            let mut parent = self.get_parent(node);
+            while parent != NIL && node == self.get_left(parent) {
+                node = parent;
+                parent = self.get_parent(parent);
+            }
+            return if parent == NIL { None } else { Some(parent) };
+        }
+    }
+
     /// Add an item to the tree
-    pub fn add<F>(&mut self, item: T, cmp: F)
+    pub fn add_by<F>(&mut self, item: T, mut cmp: F)
     where
         F: FnMut(T) -> Ordering,
     {
         if self.root == NIL {
             self.root = self.node_allocator.new_node();
             self.set_data(self.root, item);
-            self.fix_depth(self.root);
+            self.fix_aggregates(self.root);
         } else {
             let mut node = self.root;
             assert!(self.get_parent(self.root) == NIL);
 
+            let mut parent;
             loop {
-                let parent;
                 match cmp(self.get_data(node)) {
                     Ordering::Less => {
                         parent = node;
@@ -190,6 +227,345 @@ where
             }
 
             self.set_data(node, item);
+            self.set_parent(node, parent);
+
+            match cmp(self.get_data(node)) {
+                Ordering::Less => {
+                    self.set_left(parent, node);
+                }
+                Ordering::Greater => {
+                    self.set_right(parent, node);
+                }
+                Ordering::Equal => {
+                    panic!("Comparison resulted in equal when only less or greater should be possible. Please file a bug report.");
+                }
+            }
+
+            self.rebalance(node);
+        }
+    }
+
+    /// Find a node in the tree
+    /// Returns None if not found
+    pub fn find_by<F>(&self, mut cmp: F) -> Option<T>
+    where
+        F: FnMut(T) -> Ordering,
+    {
+        let mut node = self.root;
+        while node != NIL {
+            match cmp(self.get_data(node)) {
+                Ordering::Less => {
+                    node = self.get_left(node);
+                }
+                Ordering::Greater => {
+                    node = self.get_right(node);
+                }
+                Ordering::Equal => {
+                    return Some(self.get_data(node));
+                }
+            }
+        }
+        return None;
+    }
+
+    /// Update a node with new data
+    pub fn update_by<F>(&mut self, node: u32, item: T, mut cmp: F)
+    where
+        F: FnMut(T) -> Ordering,
+    {
+        let prev = self.prev(node);
+        let next = self.next(node);
+        if (prev.is_none() || cmp(self.get_data(prev.unwrap())) == Ordering::Greater)
+            && (next.is_none() || cmp(self.get_data(next.unwrap())) == Ordering::Less)
+        {
+            self.set_data(node, item);
+            let mut n = node;
+            while n != NIL {
+                self.fix_aggregates(n);
+                n = self.get_parent(n);
+            }
+        } else {
+            self.remove(node);
+            self.add_by(item, cmp);
+        }
+    }
+
+    /// Remove the specified node from the tree
+    /// # Panics
+    /// Panics if `node` is not in the tree
+    pub fn remove(&mut self, node: u32) {
+        if node == NIL {
+            panic!("Cannot remove a node with is not in the tree: NIL node");
+        }
+
+        if self.get_left(node) != NIL && self.get_right(node) != NIL {
+            // inner node, two children
+            let next = self.next(node);
+            assert!(next.is_some());
+            self.swap(node, next.unwrap());
+        }
+
+        assert!(self.get_left(node) == NIL || self.get_right(node) == NIL);
+
+        let parent = self.get_parent(node);
+        let mut child = self.get_left(node);
+        if child == NIL {
+            child = self.get_right(node);
+        }
+
+        if child == NIL {
+            // no children
+            if node == self.root {
+                assert!(self.size() == 1);
+                self.root = NIL;
+            } else {
+                if node == self.get_left(parent) {
+                    self.set_left(parent, NIL);
+                } else {
+                    assert!(node == self.get_right(parent));
+                    self.set_right(parent, NIL)
+                }
+            }
+        } else {
+            // one child
+            if node == self.root {
+                assert!(self.size() == 2);
+                self.root = child;
+            } else if node == self.get_left(parent) {
+                self.set_left(parent, child);
+            } else {
+                assert!(node == self.get_right(parent));
+                self.set_right(parent, child);
+            }
+            self.set_parent(child, parent);
+        }
+
+        self.release(node);
+        self.rebalance(parent);
+    }
+
+    /// Release the node
+    /// Marks the node as unused in the node allocator
+    fn release(&mut self, node: u32) {
+        self.set_left(node, NIL);
+        self.set_right(node, NIL);
+        self.set_parent(node, NIL);
+        self.node_allocator.release(node);
+    }
+
+    /// Swap two nodes
+    fn swap(&mut self, node1: u32, node2: u32) {
+        assert!(node1 != NIL && node2 != NIL);
+
+        let parent1 = self.get_parent(node1);
+        let parent2 = self.get_parent(node2);
+
+        if parent1 != NIL {
+            if node1 == self.get_left(parent1) {
+                self.set_left(parent1, node2);
+            } else {
+                assert!(node1 == self.get_right(parent1));
+                self.set_right(parent1, node2);
+            }
+        } else {
+            assert!(self.root == node1);
+            self.root = node2;
+        }
+
+        if parent2 != NIL {
+            if node2 == self.get_left(parent2) {
+                self.set_left(parent2, node1);
+            } else {
+                assert!(node2 == self.get_right(parent2));
+                self.set_right(parent2, node1);
+            }
+        } else {
+            assert!(self.root == node2);
+            self.root = node1;
+        }
+
+        self.set_parent(node1, parent2);
+        self.set_parent(node2, parent1);
+
+        let left1 = self.get_left(node1);
+        let left2 = self.get_left(node2);
+        self.set_left(node1, left2);
+        if left2 != NIL {
+            self.set_parent(left2, node1);
+        }
+        self.set_left(node2, left1);
+        if left1 != NIL {
+            self.set_parent(left1, node2);
+        }
+
+        let right1 = self.get_right(node1);
+        let right2 = self.get_right(node2);
+        self.set_right(node1, right2);
+        if right2 != NIL {
+            self.set_parent(right2, node1);
+        }
+        self.set_right(node2, right1);
+        if right1 != NIL {
+            self.set_parent(right1, node2);
+        }
+
+        let depth1 = self.get_depth(node1);
+        let depth2 = self.get_depth(node2);
+        self.set_depth(node1, depth2);
+        self.set_depth(node2, depth1);
+    }
+
+    /// Returns the balance of the avl tree node
+    fn balance_factor(&self, node: u32) -> i16 {
+        return self.get_depth(self.get_left(node)) as i16
+            - self.get_depth(self.get_right(node)) as i16;
+    }
+
+    /// Rebalance the node
+    fn rebalance(&mut self, node: u32) {
+        let mut n = node;
+        while n != NIL {
+            let p = self.get_parent(n);
+
+            self.fix_aggregates(n);
+
+            match self.balance_factor(n) {
+                -2 => {
+                    let right = self.get_right(n);
+                    if self.balance_factor(right) == 1 {
+                        self.rotate_right(right);
+                    }
+                    self.rotate_left(n);
+                }
+                2 => {
+                    let left = self.get_left(n);
+                    if self.balance_factor(left) == 1 {
+                        self.rotate_left(left);
+                    }
+                    self.rotate_right(n);
+                }
+                -1 | 0 | 1 => { // Balance is alright
+                }
+                _ => {
+                    panic!("AVL Tree has a balance < -2 or > 2. This should not be possible. Please file a bug report");
+                }
+            }
+
+            n = p;
+        }
+    }
+
+    /// Fix the depth for a node
+    fn fix_depth(&mut self, node: u32) {
+        let left_depth = self.get_depth(self.get_left(node));
+        let right_depth = self.get_depth(self.get_right(node));
+        self.set_depth(node, 1 + u8::max(left_depth, right_depth));
+    }
+
+    /// Rotate the subtree under node `n` left
+    fn rotate_left(&mut self, n: u32) {
+        let r = self.get_right(n);
+        let lr = self.get_left(r);
+
+        self.set_right(n, lr);
+        if lr != NIL {
+            self.set_parent(lr, n);
+        }
+        let p = self.get_parent(n);
+        self.set_parent(r, p);
+        if p == NIL {
+            self.root = r;
+        } else if self.get_left(p) == n {
+            self.set_left(p, r);
+        } else {
+            assert!(self.get_right(p) == n);
+            self.set_right(p, r);
+        }
+        self.set_left(r, n);
+        self.set_parent(n, r);
+        self.fix_aggregates(n);
+        self.fix_aggregates(self.get_parent(n));
+    }
+
+    /// Rotate the subtree under node `n` right
+    fn rotate_right(&mut self, n: u32) {
+        let l = self.get_left(n);
+        let rl = self.get_right(l);
+        self.set_left(n, rl);
+        if rl != NIL {
+            self.set_parent(rl, n);
+        }
+        let p = self.get_parent(n);
+        self.set_parent(l, p);
+        if p == NIL {
+            self.root = l;
+        } else if self.get_right(p) == n {
+            self.set_right(p, l);
+        } else {
+            assert!(self.get_left(p) == n);
+            self.set_left(p, l);
+        }
+        self.set_right(l, n);
+        self.set_parent(n, l);
+        self.fix_aggregates(n);
+        self.fix_aggregates(self.get_parent(n));
+    }
+
+    pub fn fix_aggregates(&mut self, node: u32) {
+        self.fix_depth(node);
+        let left = self.get_left(node);
+        let right = self.get_right(node);
+
+        let left_child = if left != NIL {
+            Some(&self.data[left as usize])
+        } else {
+            None
+        };
+        let right_child = if right != NIL {
+            Some(&self.data[right as usize])
+        } else {
+            None
+        };
+        self.get_data(node).fix_aggregate(left_child, right_child);
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::t_digest::avl_t_digest::aggregate_centroid::AggregateCentroid;
+    use crate::t_digest::avl_t_digest::int_avl_tree::IntAVLTree;
+    use crate::util::gen_uniform_centroid_random_weight_vec;
+
+    #[test]
+    fn add_buffer_with_many_centroids() {
+        let mut centroids = gen_uniform_centroid_random_weight_vec(1001);
+        let mut tree = IntAVLTree::default();
+
+        for centroid in &centroids {
+            let agg_centroid = AggregateCentroid::from(centroid.clone());
+            tree.add_by(agg_centroid, |other: AggregateCentroid<f32>| {
+                agg_centroid
+                    .centroid
+                    .mean
+                    .partial_cmp(&other.centroid.mean)
+                    .unwrap()
+            });
+        }
+
+        centroids.sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
+
+        let mut sum = 0.0;
+        for centroid in centroids {
+            let agg_centroid = AggregateCentroid::from(centroid);
+            let real_agg_centroid = tree.find_by(|other: AggregateCentroid<f32>| {
+                agg_centroid
+                    .centroid
+                    .mean
+                    .partial_cmp(&other.centroid.mean)
+                    .unwrap()
+            });
+            assert_eq!(centroid.mean, real_agg_centroid.unwrap().centroid.mean);
+            assert_eq!(centroid.weight, real_agg_centroid.unwrap().centroid.weight);
         }
     }
 }
