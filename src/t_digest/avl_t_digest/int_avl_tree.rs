@@ -1,3 +1,4 @@
+use crate::t_digest::avl_t_digest::c_sum::CSum;
 use crate::t_digest::avl_t_digest::node_allocator::NodeAllocator;
 use crate::t_digest::avl_t_digest::tree_aggregate::TreeAggregate;
 use crate::t_digest::avl_t_digest::NIL;

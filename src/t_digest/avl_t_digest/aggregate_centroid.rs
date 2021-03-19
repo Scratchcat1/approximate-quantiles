@@ -1,6 +1,9 @@
+use crate::t_digest::avl_t_digest::c_sum::CSum;
+use crate::t_digest::avl_t_digest::int_avl_tree::IntAVLTree;
 use crate::t_digest::avl_t_digest::tree_aggregate::TreeAggregate;
 use crate::t_digest::centroid::Centroid;
 use num_traits::Float;
+use std::cmp::Ordering;
 use std::ops::Add;
 
 /// Centroid augmented with aggregate count for use in the AVL Tree T Digest
@@ -68,5 +71,25 @@ where
         self.aggregate_count = self.centroid.weight
             + left_child.unwrap_or(&Self::default()).aggregate_count
             + right_child.unwrap_or(&Self::default()).aggregate_count
+    }
+}
+
+impl<F> CSum<AggregateCentroid<F>> for IntAVLTree<AggregateCentroid<F>>
+where
+    F: Float + std::fmt::Debug,
+{
+    fn head_sum<G>(&self, cmp: G) -> u32
+    where
+        G: FnMut(AggregateCentroid<F>) -> Ordering,
+    {
+        let node = self.find_by(cmp);
+        match node {
+            Some(node) => {
+                let left = self.get_left(node);
+                let mut sum = self.get_data(left);
+                None
+            }
+            None => None,
+        }
     }
 }

@@ -1,4 +1,5 @@
 pub mod aggregate_centroid;
+pub mod c_sum;
 pub mod int_avl_tree;
 pub mod node_allocator;
 pub mod tree_aggregate;
