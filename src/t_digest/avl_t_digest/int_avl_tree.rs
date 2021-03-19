@@ -1,33 +1,37 @@
-use crate::t_digest::avl_t_digest::c_sum::CSum;
+use crate::t_digest::avl_t_digest::int_avl_tree_store::IntAVLTreeStore;
 use crate::t_digest::avl_t_digest::node_allocator::NodeAllocator;
-use crate::t_digest::avl_t_digest::tree_aggregate::TreeAggregate;
 use crate::t_digest::avl_t_digest::NIL;
 use std::cmp::Ordering;
-use std::ops::Add;
 
 #[derive(Clone, Debug)]
-pub struct IntAVLTree<T> {
+pub struct IntAVLTree<S, T>
+where
+    S: IntAVLTreeStore<T>,
+{
     node_allocator: NodeAllocator,
     root: u32,
     parent: Vec<u32>,
     left: Vec<u32>,
     right: Vec<u32>,
     depth: Vec<u8>,
-    data: Vec<T>,
+    store: S,
+    phantom: std::marker::PhantomData<T>,
 }
 
-impl<T> Default for IntAVLTree<T>
+impl<S, T> Default for IntAVLTree<S, T>
 where
-    T: Copy + Add + Default + TreeAggregate<T> + std::fmt::Debug,
+    S: IntAVLTreeStore<T>,
+    T: Copy,
 {
     fn default() -> Self {
         Self::new(16)
     }
 }
 
-impl<T> IntAVLTree<T>
+impl<S, T> IntAVLTree<S, T>
 where
-    T: Copy + Add + Default + TreeAggregate<T> + std::fmt::Debug,
+    S: IntAVLTreeStore<T>,
+    T: Copy,
 {
     pub fn new(capacity: usize) -> Self {
         let mut tree = IntAVLTree {
@@ -37,7 +41,8 @@ where
             left: Vec::with_capacity(capacity),
             right: Vec::with_capacity(capacity),
             depth: Vec::with_capacity(capacity),
-            data: Vec::with_capacity(capacity),
+            store: S::with_capacity(capacity as u32),
+            phantom: std::marker::PhantomData,
         };
         tree.resize(capacity);
         tree
@@ -51,7 +56,7 @@ where
         self.left.resize(new_capacity, NIL);
         self.right.resize(new_capacity, NIL);
         self.depth.resize(new_capacity, 0);
-        self.data.resize(new_capacity, T::default());
+        self.store.resize(new_capacity as u32);
     }
 
     /// Returns the capacity
@@ -114,18 +119,6 @@ where
     pub fn set_depth(&mut self, node: u32, item: u8) {
         assert!(node != NIL);
         self.depth[node as usize] = item;
-    }
-
-    /// Assign `item` as data for `node`
-    #[inline]
-    pub fn set_data(&mut self, node: u32, item: T) {
-        self.data[node as usize] = item;
-    }
-
-    /// Return the data of the node
-    #[inline]
-    pub fn get_data(&self, node: u32) -> T {
-        self.data[node as usize]
     }
 
     /// Return the size of the tree
@@ -197,13 +190,10 @@ where
     }
 
     /// Add an item to the tree
-    pub fn add_by<F>(&mut self, item: T, mut cmp: F)
-    where
-        F: FnMut(T) -> Ordering,
-    {
+    pub fn add_by(&mut self, item: T) {
         if self.root == NIL {
             self.root = self.node_allocator.new_node();
-            self.set_data(self.root, item);
+            self.store.copy(self.root, item);
             self.fix_aggregates(self.root);
         } else {
             let mut node = self.root;
@@ -211,7 +201,7 @@ where
             let mut comparison;
             let mut parent;
             loop {
-                comparison = cmp(self.get_data(node));
+                comparison = self.store.compare(node, item);
                 match comparison {
                     Ordering::Less => {
                         parent = node;
@@ -235,7 +225,7 @@ where
                 self.resize(2 * node as usize);
             }
 
-            self.set_data(node, item);
+            self.store.copy(node, item);
             self.set_parent(node, parent);
 
             match comparison {
@@ -256,13 +246,10 @@ where
 
     /// Find a node in the tree
     /// Returns None if not found
-    pub fn find_by<F>(&self, mut cmp: F) -> Option<T>
-    where
-        F: FnMut(T) -> Ordering,
-    {
+    pub fn find_by(&self, item: T) -> Option<T> {
         let mut node = self.root;
         while node != NIL {
-            match cmp(self.get_data(node)) {
+            match self.store.compare(node, item) {
                 Ordering::Less => {
                     node = self.get_left(node);
                 }
@@ -270,7 +257,7 @@ where
                     node = self.get_right(node);
                 }
                 Ordering::Equal => {
-                    return Some(self.get_data(node));
+                    return Some(self.store.read(node));
                 }
             }
         }
@@ -278,16 +265,13 @@ where
     }
 
     /// Update a node with new data
-    pub fn update_by<F>(&mut self, node: u32, item: T, mut cmp: F)
-    where
-        F: FnMut(T) -> Ordering,
-    {
+    pub fn update_by(&mut self, node: u32, item: T) {
         let prev = self.prev(node);
         let next = self.next(node);
-        if (prev.is_none() || cmp(self.get_data(prev.unwrap())) == Ordering::Greater)
-            && (next.is_none() || cmp(self.get_data(next.unwrap())) == Ordering::Less)
+        if (prev.is_none() || self.store.compare(prev.unwrap(), item) == Ordering::Greater)
+            && (next.is_none() || self.store.compare(next.unwrap(), item) == Ordering::Less)
         {
-            self.set_data(node, item);
+            self.store.copy(node, item);
             let mut n = node;
             while n != NIL {
                 self.fix_aggregates(n);
@@ -295,7 +279,7 @@ where
             }
         } else {
             self.remove(node);
-            self.add_by(item, cmp);
+            self.add_by(item);
         }
     }
 
@@ -530,17 +514,9 @@ where
         let left = self.get_left(node);
         let right = self.get_right(node);
 
-        let left_child = if left != NIL {
-            Some(&self.data[left as usize])
-        } else {
-            None
-        };
-        let right_child = if right != NIL {
-            Some(&self.data[right as usize])
-        } else {
-            None
-        };
-        self.get_data(node).fix_aggregate(left_child, right_child);
+        let left_child = if left != NIL { Some(left) } else { None };
+        let right_child = if right != NIL { Some(right) } else { None };
+        self.store.fix_aggregates(node, left_child, right_child);
     }
 }
 
@@ -548,35 +524,25 @@ where
 mod test {
     use crate::t_digest::avl_t_digest::aggregate_centroid::AggregateCentroid;
     use crate::t_digest::avl_t_digest::int_avl_tree::IntAVLTree;
+    use crate::t_digest::avl_t_digest::tree_centroid_store::TreeCentroidStore;
     use crate::util::gen_uniform_centroid_random_weight_vec;
 
     #[test]
     fn add_buffer_with_many_centroids() {
-        let mut centroids = gen_uniform_centroid_random_weight_vec(1001);
-        let mut tree = IntAVLTree::default();
+        let mut centroids = gen_uniform_centroid_random_weight_vec::<f32>(1001);
+        let mut tree: IntAVLTree<TreeCentroidStore<f32>, AggregateCentroid<f32>> =
+            IntAVLTree::default();
 
         for centroid in &centroids {
             let agg_centroid = AggregateCentroid::from(centroid.clone());
-            tree.add_by(agg_centroid, |other: AggregateCentroid<f32>| {
-                agg_centroid
-                    .centroid
-                    .mean
-                    .partial_cmp(&other.centroid.mean)
-                    .unwrap()
-            });
+            tree.add_by(agg_centroid);
         }
 
         centroids.sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
 
         for centroid in centroids {
             let agg_centroid = AggregateCentroid::from(centroid);
-            let real_agg_centroid = tree.find_by(|other: AggregateCentroid<f32>| {
-                agg_centroid
-                    .centroid
-                    .mean
-                    .partial_cmp(&other.centroid.mean)
-                    .unwrap()
-            });
+            let real_agg_centroid = tree.find_by(agg_centroid);
             assert_eq!(centroid.mean, real_agg_centroid.unwrap().centroid.mean);
             assert_eq!(centroid.weight, real_agg_centroid.unwrap().centroid.weight);
         }
