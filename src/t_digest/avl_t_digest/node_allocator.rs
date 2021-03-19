@@ -1,7 +1,7 @@
 use crate::t_digest::avl_t_digest::NIL;
 
 /// Allocates ids either by creating a new id or using a released/marked as unused id
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct NodeAllocator {
     /// The next node id which will be allocated.
     next_node: u32,
@@ -24,8 +24,9 @@ impl NodeAllocator {
             Some(node) => node,
             None => {
                 assert!(self.next_node < u32::MAX);
+                let node = self.next_node;
                 self.next_node += 1;
-                self.next_node
+                node
             }
         }
     }
@@ -40,5 +41,11 @@ impl NodeAllocator {
 
     pub fn size(&self) -> u32 {
         return self.next_node - self.released_nodes.len() as u32 - 1;
+    }
+}
+
+impl Default for NodeAllocator {
+    fn default() -> Self {
+        Self::new()
     }
 }

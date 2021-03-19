@@ -17,7 +17,7 @@ pub struct IntAVLTree<T> {
 
 impl<T> Default for IntAVLTree<T>
 where
-    T: Copy + Add + Default + TreeAggregate<T>,
+    T: Copy + Add + Default + TreeAggregate<T> + std::fmt::Debug,
 {
     fn default() -> Self {
         Self::new(16)
@@ -26,10 +26,10 @@ where
 
 impl<T> IntAVLTree<T>
 where
-    T: Copy + Add + Default + TreeAggregate<T>,
+    T: Copy + Add + Default + TreeAggregate<T> + std::fmt::Debug,
 {
     pub fn new(capacity: usize) -> Self {
-        IntAVLTree {
+        let mut tree = IntAVLTree {
             node_allocator: NodeAllocator::default(),
             root: NIL,
             parent: Vec::with_capacity(capacity),
@@ -37,7 +37,9 @@ where
             right: Vec::with_capacity(capacity),
             depth: Vec::with_capacity(capacity),
             data: Vec::with_capacity(capacity),
-        }
+        };
+        tree.resize(capacity);
+        tree
     }
 
     /// Resize all arrays to the `new_capacity`
@@ -70,6 +72,7 @@ where
     /// Set the parent of the node
     #[inline]
     pub fn set_parent(&mut self, node: u32, item: u32) {
+        assert!(node != NIL);
         self.parent[node as usize] = item;
     }
 
@@ -82,6 +85,7 @@ where
     /// Set the left child of the node
     #[inline]
     pub fn set_left(&mut self, node: u32, item: u32) {
+        assert!(node != NIL);
         self.left[node as usize] = item;
     }
 
@@ -94,6 +98,7 @@ where
     /// Set the right child of the node
     #[inline]
     pub fn set_right(&mut self, node: u32, item: u32) {
+        assert!(node != NIL);
         self.right[node as usize] = item;
     }
 
@@ -106,6 +111,7 @@ where
     /// Set the depth of the node
     #[inline]
     pub fn set_depth(&mut self, node: u32, item: u8) {
+        assert!(node != NIL);
         self.depth[node as usize] = item;
     }
 
@@ -139,7 +145,7 @@ where
             }
             node = left;
         }
-        return Some(node);
+        return if node == NIL { None } else { Some(node) };
     }
 
     /// Returns the greatest node under `node` or None if not found
@@ -155,7 +161,8 @@ where
             }
             node = right;
         }
-        return Some(node);
+
+        return if node == NIL { None } else { Some(node) };
     }
 
     /// Returns the least node that is strictly greater than `node` or None if not found
@@ -200,10 +207,11 @@ where
         } else {
             let mut node = self.root;
             assert!(self.get_parent(self.root) == NIL);
-
+            let mut comparison;
             let mut parent;
             loop {
-                match cmp(self.get_data(node)) {
+                comparison = cmp(self.get_data(node));
+                match comparison {
                     Ordering::Less => {
                         parent = node;
                         node = self.get_left(node);
@@ -229,7 +237,7 @@ where
             self.set_data(node, item);
             self.set_parent(node, parent);
 
-            match cmp(self.get_data(node)) {
+            match comparison {
                 Ordering::Less => {
                     self.set_left(parent, node);
                 }
@@ -439,7 +447,7 @@ where
                 }
                 2 => {
                     let left = self.get_left(n);
-                    if self.balance_factor(left) == 1 {
+                    if self.balance_factor(left) == -1 {
                         self.rotate_left(left);
                     }
                     self.rotate_right(n);
@@ -471,6 +479,7 @@ where
         if lr != NIL {
             self.set_parent(lr, n);
         }
+
         let p = self.get_parent(n);
         self.set_parent(r, p);
         if p == NIL {
@@ -481,6 +490,7 @@ where
             assert!(self.get_right(p) == n);
             self.set_right(p, r);
         }
+
         self.set_left(r, n);
         self.set_parent(n, r);
         self.fix_aggregates(n);
@@ -491,10 +501,12 @@ where
     fn rotate_right(&mut self, n: u32) {
         let l = self.get_left(n);
         let rl = self.get_right(l);
+
         self.set_left(n, rl);
         if rl != NIL {
             self.set_parent(rl, n);
         }
+
         let p = self.get_parent(n);
         self.set_parent(l, p);
         if p == NIL {
@@ -505,6 +517,7 @@ where
             assert!(self.get_left(p) == n);
             self.set_left(p, l);
         }
+
         self.set_right(l, n);
         self.set_parent(n, l);
         self.fix_aggregates(n);
@@ -554,7 +567,6 @@ mod test {
 
         centroids.sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
 
-        let mut sum = 0.0;
         for centroid in centroids {
             let agg_centroid = AggregateCentroid::from(centroid);
             let real_agg_centroid = tree.find_by(|other: AggregateCentroid<f32>| {
