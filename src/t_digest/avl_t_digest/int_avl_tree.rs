@@ -1,6 +1,6 @@
 use crate::t_digest::avl_t_digest::int_avl_tree_store::IntAVLTreeStore;
 use crate::t_digest::avl_t_digest::node_allocator::NodeAllocator;
-use crate::t_digest::avl_t_digest::NIL;
+use crate::t_digest::avl_t_digest::{node_id_to_option, NIL};
 use std::cmp::Ordering;
 
 #[derive(Clone, Debug)]
@@ -119,6 +119,16 @@ where
     pub fn set_depth(&mut self, node: u32, item: u8) {
         assert!(node != NIL);
         self.depth[node as usize] = item;
+    }
+
+    /// Return a reference to the store
+    pub fn get_store(&self) -> &S {
+        &self.store
+    }
+
+    /// Return a mutable reference to the store
+    pub fn get_mut_store(&mut self) -> &mut S {
+        &mut self.store
     }
 
     /// Return the size of the tree
@@ -518,17 +528,87 @@ where
         let right_child = if right != NIL { Some(right) } else { None };
         self.store.fix_aggregates(node, left_child, right_child);
     }
+
+    /// Returns the last node id which is less than `item`
+    pub fn floor(&self, item: T) -> Option<u32> {
+        let mut floor = NIL;
+        let mut node = self.root;
+        while node != NIL {
+            match self.store.compare(node, item) {
+                Ordering::Less | Ordering::Equal => {
+                    node = self.get_left(node);
+                }
+                Ordering::Greater => {
+                    floor = node;
+                    node = self.get_right(node);
+                }
+            }
+        }
+        node_id_to_option(floor)
+    }
+}
+
+impl<'a, S, T> IntoIterator for &'a IntAVLTree<S, T>
+where
+    S: IntAVLTreeStore<T>,
+    T: Copy,
+{
+    type Item = u32;
+    type IntoIter = IntAVLTreeRefIterator<'a, S, T>;
+
+    fn into_iter(self) -> IntAVLTreeRefIterator<'a, S, T> {
+        IntAVLTreeRefIterator::new(&self)
+    }
+}
+
+pub struct IntAVLTreeRefIterator<'a, S, T>
+where
+    S: IntAVLTreeStore<T>,
+{
+    current_node: Option<u32>,
+    tree: &'a IntAVLTree<S, T>,
+}
+
+impl<'a, S, T> IntAVLTreeRefIterator<'a, S, T>
+where
+    S: IntAVLTreeStore<T>,
+    T: Copy,
+{
+    fn new(tree: &'a IntAVLTree<S, T>) -> Self {
+        let first_node = node_id_to_option(tree.root).and_then(|node| tree.first(node));
+        IntAVLTreeRefIterator {
+            current_node: first_node,
+            tree: tree,
+        }
+    }
+}
+
+impl<'a, S, T> Iterator for IntAVLTreeRefIterator<'a, S, T>
+where
+    S: IntAVLTreeStore<T>,
+    T: Copy,
+{
+    type Item = u32;
+
+    fn next(&mut self) -> Option<u32> {
+        let result = self.current_node;
+        if let Some(current_node) = self.current_node {
+            self.current_node = self.tree.next(current_node);
+        }
+        result
+    }
 }
 
 #[cfg(test)]
 mod test {
     use crate::t_digest::avl_t_digest::aggregate_centroid::AggregateCentroid;
     use crate::t_digest::avl_t_digest::int_avl_tree::IntAVLTree;
+    use crate::t_digest::avl_t_digest::int_avl_tree_store::IntAVLTreeStore;
     use crate::t_digest::avl_t_digest::tree_centroid_store::TreeCentroidStore;
     use crate::util::gen_uniform_centroid_random_weight_vec;
 
     #[test]
-    fn add_buffer_with_many_centroids() {
+    fn add_uniform_centroids_and_find() {
         let mut centroids = gen_uniform_centroid_random_weight_vec::<f32>(1001);
         let mut tree: IntAVLTree<TreeCentroidStore<f32>, AggregateCentroid<f32>> =
             IntAVLTree::default();
@@ -545,6 +625,27 @@ mod test {
             let real_agg_centroid = tree.find_by(agg_centroid);
             assert_eq!(centroid.mean, real_agg_centroid.unwrap().centroid.mean);
             assert_eq!(centroid.weight, real_agg_centroid.unwrap().centroid.weight);
+        }
+    }
+
+    #[test]
+    fn add_uniform_centroids_and_iterator() {
+        let mut centroids = gen_uniform_centroid_random_weight_vec::<f32>(1001);
+        let mut tree: IntAVLTree<TreeCentroidStore<f32>, AggregateCentroid<f32>> =
+            IntAVLTree::default();
+
+        for centroid in &centroids {
+            let agg_centroid = AggregateCentroid::from(centroid.clone());
+            tree.add_by(agg_centroid);
+        }
+
+        centroids.sort_by(|a, b| a.mean.partial_cmp(&b.mean).unwrap());
+        let mut iter = tree.into_iter();
+        for centroid in centroids {
+            let node_id = iter.next().unwrap();
+            let tree_centroid = tree.get_store().read(node_id);
+            assert_eq!(centroid.mean, tree_centroid.centroid.mean);
+            assert_eq!(centroid.weight, tree_centroid.centroid.weight);
         }
     }
 }

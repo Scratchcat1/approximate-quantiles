@@ -16,7 +16,8 @@ pub trait IntAVLTreeStore<T> {
     /// Read the data associated with the node
     fn read(&self, node: u32) -> T;
 
-    /// Compare an item to the data store at `node`
+    /// Compare `item` to the data store at `node`
+    /// Comparison ordering is item {ord} data[node]
     fn compare(&self, node: u32, item: T) -> Ordering;
 
     /// Fix aggregates

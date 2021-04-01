@@ -39,10 +39,9 @@ where
     }
 
     fn compare(&self, node: u32, item: AggregateCentroid<F>) -> Ordering {
-        self.centroids[node as usize]
-            .centroid
+        item.centroid
             .mean
-            .partial_cmp(&item.centroid.mean)
+            .partial_cmp(&self.centroids[node as usize].centroid.mean)
             .unwrap()
     }
 
