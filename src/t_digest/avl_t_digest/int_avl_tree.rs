@@ -217,13 +217,13 @@ where
                         parent = node;
                         node = self.get_left(node);
                     }
-                    Ordering::Greater => {
+                    Ordering::Greater | Ordering::Equal => {
                         parent = node;
                         node = self.get_right(node);
-                    }
-                    _ => {
-                        todo!();
-                    }
+                    } // _ => {
+                      //     self.store.merge(node, item);
+                      //     return;
+                      // }
                 }
                 if node == NIL {
                     break;

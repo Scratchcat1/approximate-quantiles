@@ -328,7 +328,7 @@ mod test {
 
     #[test]
     fn insert_multiple_values() {
-        let mut sketch = RCSketch2::new(8);
+        let mut sketch = RCSketch2::new(16);
         (0..1000).map(|x| sketch.add(x as f64)).for_each(drop);
 
         println!("{:?}", sketch);
@@ -379,7 +379,7 @@ mod test {
 
     #[test]
     fn insert_batch_multiple_values() {
-        let mut sketch = RCSketch2::new(8);
+        let mut sketch = RCSketch2::new(16);
         sketch.add_buffer(&gen_asc_vec(1000));
 
         println!("{:?}", sketch);
@@ -400,7 +400,7 @@ mod test {
 
     #[test]
     fn insert_batch_descending_multiple_values() {
-        let mut sketch = RCSketch2::new(8);
+        let mut sketch = RCSketch2::new(16);
         sketch.add_buffer(&(0..1000).map(|x| 999.0 - x as f64).collect::<Vec<f64>>());
 
         println!("{:?}", sketch);
@@ -626,7 +626,7 @@ mod test {
         assert_relative_eq!(sketch.est_value_at_quantile(0.0), 0.0, epsilon = 0.001);
         assert_relative_eq!(sketch.est_value_at_quantile(0.001), 1.0, epsilon = 0.1);
         assert_relative_eq!(sketch.est_value_at_quantile(0.1), 100.0, epsilon = 1.0);
-        assert_relative_eq!(sketch.est_value_at_quantile(0.5), 500.0, epsilon = 4.0);
+        assert_relative_eq!(sketch.est_value_at_quantile(0.5), 500.0, epsilon = 5.0);
         assert_relative_eq!(sketch.est_value_at_quantile(1.0), 1000.0, epsilon = 10.0);
         // assert_eq!(false, true);
     }

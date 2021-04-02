@@ -32,6 +32,15 @@ where
         / F::from(2.0).unwrap()
 }
 
+pub fn k1_max<F>(scale: F, comp_factor: F, _: F) -> F
+where
+    F: Float,
+{
+    F::from(2.0).unwrap()
+        * (F::from(PI).unwrap() / comp_factor).sin()
+        * (scale * (F::from(1.0).unwrap() - scale)).sqrt()
+}
+
 pub fn k2<F>(quantile: F, comp_factor: F, n: F) -> F
 where
     F: Float,
