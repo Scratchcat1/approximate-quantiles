@@ -524,9 +524,7 @@ where
         let left = self.get_left(node);
         let right = self.get_right(node);
 
-        let left_child = if left != NIL { Some(left) } else { None };
-        let right_child = if right != NIL { Some(right) } else { None };
-        self.store.fix_aggregates(node, left_child, right_child);
+        self.store.fix_aggregates(node, left, right);
     }
 
     /// Returns the last node id which is less than `item`

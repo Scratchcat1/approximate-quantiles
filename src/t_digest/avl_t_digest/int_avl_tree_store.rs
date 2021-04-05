@@ -22,5 +22,6 @@ pub trait IntAVLTreeStore<T> {
 
     /// Fix aggregates
     /// Used when store keeps track of values derived from each child e.g. A summation tree
-    fn fix_aggregates(&mut self, node: u32, left_child: Option<u32>, right_child: Option<u32>);
+    /// Children may be NIL
+    fn fix_aggregates(&mut self, node: u32, left_child: u32, right_child: u32);
 }

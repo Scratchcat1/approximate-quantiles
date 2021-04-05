@@ -45,15 +45,12 @@ where
             .unwrap()
     }
 
-    fn fix_aggregates(&mut self, node: u32, left_child: Option<u32>, right_child: Option<u32>) {
-        let mut aggregate_count = self.centroids[node as usize].centroid.weight;
-        if let Some(left) = left_child {
-            aggregate_count += self.centroids[left as usize].aggregate_count;
-        }
-        if let Some(right) = right_child {
-            aggregate_count += self.centroids[right as usize].aggregate_count;
-        }
+    fn fix_aggregates(&mut self, node: u32, left: u32, right: u32) {
+        let aggregate_count = self.centroids[node as usize].centroid.weight;
+        let left_agg = self.centroids[left as usize].aggregate_count;
 
-        self.centroids[node as usize].aggregate_count = aggregate_count;
+        let right_agg = self.centroids[right as usize].aggregate_count;
+
+        self.centroids[node as usize].aggregate_count = aggregate_count + left_agg + right_agg;
     }
 }
