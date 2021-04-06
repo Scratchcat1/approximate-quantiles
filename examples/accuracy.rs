@@ -73,7 +73,7 @@ pub fn plot_box_plot_graph<T>(
 where
     T: Float,
 {
-    let root = SVGBackend::new(output_path, (1600, 1200)).into_drawing_area();
+    let root = SVGBackend::new(output_path, (1200, 800)).into_drawing_area();
 
     root.fill(&WHITE)?;
 
@@ -168,7 +168,7 @@ pub fn plot_line_graph<T>(
 where
     T: Float + std::fmt::Debug,
 {
-    let root = SVGBackend::new(output_path, (1600, 1200)).into_drawing_area();
+    let root = SVGBackend::new(output_path, (1200, 800)).into_drawing_area();
     let marker_size = 14;
 
     root.fill(&WHITE)?;
@@ -704,7 +704,7 @@ where
             ),
             series,
             &Path::new(&format!(
-                "plots/acc_vs_input_est_value_from_quantile_{}.png",
+                "plots/acc_vs_input_est_value_from_quantile_{}.svg",
                 dist_name.to_lowercase().replace(" ", "_")
             )),
             "Quantile",
@@ -882,7 +882,7 @@ where
             ),
             series,
             &Path::new(&format!(
-                "plots/acc_vs_input_est_quantile_from_value_{}.png",
+                "plots/acc_vs_input_est_quantile_from_value_{}.svg",
                 dist_name.to_lowercase().replace(" ", "_")
             )),
             "Value",
@@ -1015,7 +1015,7 @@ where
             ),
             series,
             &Path::new(&format!(
-                "plots/err_vs_mem_usage_for_est_quantile_from_value_{}.png",
+                "plots/err_vs_mem_usage_for_est_quantile_from_value_{}.svg",
                 dist_name.to_lowercase().replace(" ", "_")
             )),
             "Memory (bytes)",
@@ -1145,7 +1145,7 @@ where
                 ),
                 series,
                 &Path::new(&format!(
-                    "plots/err_vs_mem_usage_rcsketch_parallel_for_{}_{}.png",
+                    "plots/err_vs_mem_usage_rcsketch_parallel_for_{}_{}.svg",
                     est_name.to_lowercase().replace(" ", "_"),
                     dist_name.to_lowercase().replace(" ", "_")
                 )),
@@ -1195,7 +1195,7 @@ where
                 ),
                 series,
                 &Path::new(&format!(
-                    "plots/err_vs_mem_usage_tdigest_parallel_for_{}_{}.png",
+                    "plots/err_vs_mem_usage_tdigest_parallel_for_{}_{}.svg",
                     est_name.to_lowercase().replace(" ", "_"),
                     dist_name.to_lowercase().replace(" ", "_")
                 )),
@@ -1386,7 +1386,7 @@ where
                 ),
                 series,
                 &Path::new(&format!(
-                    "plots/err_vs_quantile_similarity_for_{}_{}.png",
+                    "plots/err_vs_quantile_similarity_for_{}_{}.svg",
                     est_name.to_lowercase().replace(" ", "_"),
                     dist_name.to_lowercase().replace(" ", "_")
                 )),
@@ -1633,7 +1633,7 @@ where
             ),
             series,
             &Path::new(&format!(
-                "plots/err_vs_input_for_est_value_from_quantile_{}.png",
+                "plots/err_vs_input_for_est_value_from_quantile_{}.svg",
                 dist_name.to_lowercase().replace(" ", "_")
             )),
             "Input size",
@@ -1729,7 +1729,7 @@ where
     plot_line_graph(
         "Memory usage against compression/accuracy parameter",
         series,
-        &Path::new("plots/mem_vs_comp_param.png"),
+        &Path::new("plots/mem_vs_comp_param.svg"),
         "Compression/Accuracy parameter",
         "Memory usage bytes",
         false,
@@ -1834,7 +1834,7 @@ where
     plot_line_graph(
         "Memory usage against input_size parameter",
         series,
-        &Path::new("plots/mem_vs_input_size.png"),
+        &Path::new("plots/mem_vs_input_size.svg"),
         "Input size",
         "Memory usage (bytes)",
         false,
