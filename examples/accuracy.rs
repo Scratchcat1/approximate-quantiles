@@ -73,7 +73,7 @@ pub fn plot_box_plot_graph<T>(
 where
     T: Float,
 {
-    let root = BitMapBackend::new(output_path, (1600, 1200)).into_drawing_area();
+    let root = SVGBackend::new(output_path, (1600, 1200)).into_drawing_area();
 
     root.fill(&WHITE)?;
 
@@ -168,7 +168,7 @@ pub fn plot_line_graph<T>(
 where
     T: Float + std::fmt::Debug,
 {
-    let root = BitMapBackend::new(output_path, (1600, 1200)).into_drawing_area();
+    let root = SVGBackend::new(output_path, (1600, 1200)).into_drawing_area();
     let marker_size = 14;
 
     root.fill(&WHITE)?;
