@@ -129,9 +129,8 @@ fn relative_compactor_compression_comparison_uniform_range(c: &mut Criterion) {
     // let plot_config = PlotConfiguration::default().summary_scale(AxisScale::Logarithmic);
     let mut group = c.benchmark_group("relative_compactor_compression_comparison_uniform_range");
     // group.plot_config(plot_config);
-    let size = 1 << 22;
-    for k in (0..16).map(|x| 1 << x) {
-        group.throughput(Throughput::Elements(size as u64));
+    let size = 1 << 20;
+    for k in (2..16).map(|x| 1 << x) {
         group.bench_with_input(BenchmarkId::new("default", k), &k, |b, &k| {
             let test_input = gen_uniform_vec::<f64>(size);
             b.iter(|| {
@@ -144,31 +143,6 @@ fn relative_compactor_compression_comparison_uniform_range(c: &mut Criterion) {
             b.iter(|| {
                 let mut sketch = RCSketch2::new(k);
                 sketch.add_buffer(&test_input)
-            });
-        });
-        group.bench_with_input(BenchmarkId::new("buffer", k), &k, |b, &k| {
-            let test_input = gen_uniform_vec::<f64>(size);
-            b.iter(|| {
-                let mut sketch = RCSketch::new(size as usize, k);
-                sketch.add_buffer(&test_input)
-            });
-        });
-        group.bench_with_input(BenchmarkId::new("parallel", k), &k, |b, &k| {
-            let test_input = gen_uniform_vec::<f64>(size);
-            b.iter(|| {
-                let mut sketch = ParallelDigest::new(
-                    (0..num_cpus::get())
-                        .map(|_| RCSketch::new(size as usize, k))
-                        .collect(),
-                );
-                sketch.add_buffer(&test_input)
-            });
-        });
-        group.bench_with_input(BenchmarkId::new("buffer_fast", k), &k, |b, &k| {
-            let test_input = gen_uniform_vec::<f64>(size);
-            b.iter(|| {
-                let mut sketch = RCSketch::new(size as usize, k);
-                sketch.add_buffer_fast(&test_input);
             });
         });
     }
