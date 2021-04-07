@@ -1530,7 +1530,7 @@ where
                     || dataset_func(*input_size),
                     test_func(*quantile),
                     error_func,
-                    10,
+                    8,
                 )
                 .unwrap();
                 s.push((T::from(*input_size).unwrap(), accuracy_measurements));
@@ -1553,7 +1553,7 @@ where
                     || dataset_func(*input_size),
                     test_func(*quantile),
                     error_func,
-                    10,
+                    8,
                 )
                 .unwrap();
                 s.push((T::from(*input_size).unwrap(), accuracy_measurements));
@@ -1581,7 +1581,7 @@ where
                     },
                     test_func_f64(quantile.to_f64().unwrap()),
                     error_func_f64,
-                    10,
+                    8,
                 )
                 .unwrap();
                 s.push((*input_size as f64, accuracy_measurements));
@@ -1607,7 +1607,7 @@ where
                     || dataset_func(*input_size),
                     test_func(*quantile),
                     error_func,
-                    10,
+                    8,
                 )
                 .unwrap();
                 s.push((T::from(*input_size).unwrap(), accuracy_measurements));
@@ -1874,11 +1874,11 @@ fn main() {
     quantile_error_against_value::<f32>();
     // determine_required_parameter::<f32>();
     // determine_required_parameter::<f64>();
-    // plot_error_against_mem_usage::<f32>();
-    // plot_error_against_mem_usage_parallel::<f32>();
-    // plot_error_against_quantiles_full_range::<f32>();
-    // plot_error_against_input_size::<f32>();
-    // plot_memory_usage_against_compression_parameter::<f32>();
+    plot_error_against_mem_usage::<f32>();
+    plot_error_against_mem_usage_parallel::<f32>();
+    plot_error_against_quantiles_full_range::<f32>();
+    plot_error_against_input_size::<f32>();
+    plot_memory_usage_against_compression_parameter::<f32>();
     plot_memory_usage_against_input_size::<f32>();
     println!("Complete");
 }
