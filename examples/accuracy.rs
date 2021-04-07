@@ -892,12 +892,15 @@ where
     }
 }
 
+// T Only controls RC Sketch, force 64 bit t digest
 fn plot_error_against_mem_usage<T>()
 where
     T: Float + Send + Sync + NumAssignOps + std::fmt::Debug,
 {
     let test_func =
         |value: T| move |digest: &mut dyn Digest<T>| digest.est_value_at_quantile(value);
+    let test_funcf64 =
+        |value: f64| move |digest: &mut dyn Digest<f64>| digest.est_value_at_quantile(value);
 
     let error_func = |a, b| {
         T::max(
@@ -905,6 +908,8 @@ where
             relative_error(a, b) * T::from(1e6).unwrap(),
         )
     };
+
+    let error_funcf64 = |a: f64, b: f64| f64::max(1.0, relative_error(a, b) * 1e6);
 
     let create_rcsketch = |accuracy_param: T| {
         move |dataset: &[T]| {
@@ -914,8 +919,8 @@ where
         }
     };
 
-    let create_t_digest = |compression_param: T| {
-        move |dataset: &[T]| {
+    let create_t_digest = |compression_param: f64| {
+        move |dataset: &[f64]| {
             let mut digest = TDigest::new(
                 &scale_functions::k2,
                 &scale_functions::inv_k2,
@@ -934,8 +939,8 @@ where
         .collect::<Vec<T>>();
     let t_digest_test_values = (4..14)
         // .iter()
-        .map(|x| T::from(1 << x).unwrap())
-        .collect::<Vec<T>>();
+        .map(|x| (1 << x) as f64)
+        .collect::<Vec<f64>>();
 
     let quantiles = [
         (1e-5, "X"),
@@ -945,10 +950,10 @@ where
         (1e-1, "■"),
     ]
     .iter()
-    .map(|(q, marker)| (T::from(*q).unwrap(), marker.to_string()))
-    .collect::<Vec<(T, String)>>();
+    .map(|(q, marker)| (f64::from(*q), marker.to_string()))
+    .collect::<Vec<(f64, String)>>();
 
-    let input_size = 100_000;
+    let input_size = 10_000_000;
     let rc_sketch_mem_size = |param| {
         let digest = create_rcsketch(param)(&gen_uniform_tan_vec(input_size));
         digest.owned_size()
@@ -967,9 +972,9 @@ where
                 let accuracy_measurements = sample_digest_accuracy(
                     create_rcsketch(*rcsketch_param),
                     || dataset_func(input_size),
-                    test_func(*quantile),
+                    test_func(T::from(*quantile).unwrap()),
                     error_func,
-                    100,
+                    20,
                 )
                 .unwrap();
                 s.push((
@@ -978,35 +983,46 @@ where
                 ));
             }
 
-            series.push(Line {
-                name: format!("RCSketch, q = 1e{:?}", quantile.log10().to_i32().unwrap()),
-                datapoints: s,
-                colour: &RED,
-                marker: Some(marker.clone()),
-            });
+            series.push(
+                Line {
+                    name: format!("RCSketch, q = 1e{:?}", quantile.log10()),
+                    datapoints: s,
+                    colour: &RED,
+                    marker: Some(marker.clone()),
+                }
+                .into_line_f64(),
+            );
 
             let mut s = Vec::new();
             for t_digest_param in &t_digest_test_values {
                 let accuracy_measurements = sample_digest_accuracy(
                     create_t_digest(*t_digest_param),
-                    || dataset_func(input_size),
-                    test_func(*quantile),
-                    error_func,
-                    100,
+                    || {
+                        dataset_func(input_size)
+                            .into_iter()
+                            .map(|x| x.to_f64().unwrap())
+                            .collect::<Vec<f64>>()
+                    },
+                    test_funcf64(*quantile),
+                    error_funcf64,
+                    20,
                 )
                 .unwrap();
                 s.push((
-                    T::from(t_digest_mem_size(*t_digest_param)).unwrap(),
+                    t_digest_mem_size(*t_digest_param) as f64,
                     accuracy_measurements,
                 ));
             }
 
-            series.push(Line {
-                name: format!("t-Digest, q = 1e{:?}", quantile.log10().to_i32().unwrap()),
-                datapoints: s,
-                colour: &BLUE,
-                marker: Some(marker.clone()),
-            });
+            series.push(
+                Line {
+                    name: format!("t-Digest, q = 1e{:?}", quantile.log10()),
+                    datapoints: s,
+                    colour: &BLUE,
+                    marker: Some(marker.clone()),
+                }
+                .into_line_f64(),
+            );
         }
         plot_line_graph(
             &format!(
@@ -1854,7 +1870,13 @@ fn relative_error<T>(measured: T, actual: T) -> T
 where
     T: Float,
 {
-    // println!("{} {}", measured, actual);
+//    println!(
+//        "{} {}  | {} {}",
+//        measured.to_f32().unwrap(),
+//        actual.to_f32().unwrap(),
+//        measured.to_f64().unwrap(),
+//        actual.to_f64().unwrap()
+//    );
     // if ((measured - actual).abs() / actual.abs() >= T::from(1.0).unwrap()) {
     //     println!(
     //         "Error {} {} {}",
