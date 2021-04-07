@@ -1,10 +1,11 @@
 use approximate_quantiles::buffered_digest::BufferedDigest;
 use approximate_quantiles::parallel_digest::ParallelDigest;
+use approximate_quantiles::t_digest::avl_t_digest::avl_tree_digest::AVLTreeDigest;
 use approximate_quantiles::t_digest::{
     centroid::Centroid,
     par_t_digest::ParTDigest,
     scale_functions,
-    scale_functions::{inv_k1, k1},
+    scale_functions::{inv_k1, k1, k1_max},
     t_digest::TDigest,
 };
 use approximate_quantiles::traits::Digest;
@@ -253,6 +254,13 @@ fn t_digest_add_cluster_comparison_uniform_range(c: &mut Criterion) {
                 });
             },
         );
+        group.bench_with_input(BenchmarkId::new("avl", size), &size, |b, &size| {
+            let test_input = gen_uniform_vec(size);
+            b.iter(|| {
+                let mut digest = AVLTreeDigest::new(&k1_max, &k1_max, black_box(50.0));
+                digest.add_buffer(&test_input);
+            });
+        });
     }
     group.finish();
 }
@@ -330,6 +338,14 @@ fn t_digest_add_cluster_compression_comparison_uniform(c: &mut Criterion) {
                 });
             },
         );
+
+        group.bench_with_input(BenchmarkId::new("avl", delta), &delta, |b, &delta| {
+            let test_input = gen_uniform_vec(size);
+            b.iter(|| {
+                let mut digest = AVLTreeDigest::new(&k1_max, &k1_max, delta);
+                digest.add_buffer(&test_input);
+            });
+        });
     }
     group.finish();
 }
