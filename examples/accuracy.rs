@@ -1546,7 +1546,7 @@ where
                     || dataset_func(*input_size),
                     test_func(*quantile),
                     error_func,
-                    8,
+                    6,
                 )
                 .unwrap();
                 s.push((T::from(*input_size).unwrap(), accuracy_measurements));
@@ -1569,7 +1569,7 @@ where
                     || dataset_func(*input_size),
                     test_func(*quantile),
                     error_func,
-                    8,
+                    6,
                 )
                 .unwrap();
                 s.push((T::from(*input_size).unwrap(), accuracy_measurements));
@@ -1597,7 +1597,7 @@ where
                     },
                     test_func_f64(quantile.to_f64().unwrap()),
                     error_func_f64,
-                    8,
+                    6,
                 )
                 .unwrap();
                 s.push((*input_size as f64, accuracy_measurements));
@@ -1623,7 +1623,7 @@ where
                     || dataset_func(*input_size),
                     test_func(*quantile),
                     error_func,
-                    8,
+                    6,
                 )
                 .unwrap();
                 s.push((T::from(*input_size).unwrap(), accuracy_measurements));
