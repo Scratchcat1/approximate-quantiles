@@ -103,17 +103,34 @@ fn relative_compactor_comparison_uniform_range(c: &mut Criterion) {
                 sketch.add_buffer(&test_input)
             });
         });
-        group.bench_with_input(BenchmarkId::new("parallel", size), &size, |b, &size| {
-            let test_input = gen_uniform_vec::<f64>(size);
-            b.iter(|| {
-                let mut sketch = ParallelDigest::new(
-                    (0..num_cpus::get())
-                        .map(|_| RCSketch::new(size as usize, 64))
-                        .collect(),
-                );
-                sketch.add_buffer(&test_input)
-            });
-        });
+        group.bench_with_input(
+            BenchmarkId::new("parallel original", size),
+            &size,
+            |b, &size| {
+                let test_input = gen_uniform_vec::<f64>(size);
+                b.iter(|| {
+                    let mut sketch = ParallelDigest::new(
+                        (0..num_cpus::get())
+                            .map(|_| RCSketch::new(size as usize, 64))
+                            .collect(),
+                    );
+                    sketch.add_buffer(&test_input)
+                });
+            },
+        );
+        group.bench_with_input(
+            BenchmarkId::new("parallel RC Sketch 2", size),
+            &size,
+            |b, &size| {
+                let test_input = gen_uniform_vec::<f64>(size);
+                b.iter(|| {
+                    let mut sketch = ParallelDigest::new(
+                        (0..num_cpus::get()).map(|_| RCSketch2::new(64)).collect(),
+                    );
+                    sketch.add_buffer(&test_input)
+                });
+            },
+        );
         group.bench_with_input(BenchmarkId::new("buffer_fast", size), &size, |b, &size| {
             let test_input = gen_uniform_vec::<f64>(size);
             b.iter(|| {
