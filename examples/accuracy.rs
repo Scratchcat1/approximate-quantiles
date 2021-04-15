@@ -73,7 +73,7 @@ pub fn plot_box_plot_graph<T>(
 where
     T: Float,
 {
-    let root = BitMapBackend::new(output_path, (1600, 1200)).into_drawing_area();
+    let root = SVGBackend::new(output_path, (1200, 800)).into_drawing_area();
 
     root.fill(&WHITE)?;
 
@@ -168,7 +168,7 @@ pub fn plot_line_graph<T>(
 where
     T: Float + std::fmt::Debug,
 {
-    let root = BitMapBackend::new(output_path, (1600, 1200)).into_drawing_area();
+    let root = SVGBackend::new(output_path, (1200, 800)).into_drawing_area();
     let marker_size = 14;
 
     root.fill(&WHITE)?;
@@ -704,7 +704,7 @@ where
             ),
             series,
             &Path::new(&format!(
-                "plots/acc_vs_input_est_value_from_quantile_{}.png",
+                "plots/acc_vs_input_est_value_from_quantile_{}.svg",
                 dist_name.to_lowercase().replace(" ", "_")
             )),
             "Quantile",
@@ -882,7 +882,7 @@ where
             ),
             series,
             &Path::new(&format!(
-                "plots/acc_vs_input_est_quantile_from_value_{}.png",
+                "plots/acc_vs_input_est_quantile_from_value_{}.svg",
                 dist_name.to_lowercase().replace(" ", "_")
             )),
             "Value",
@@ -892,12 +892,15 @@ where
     }
 }
 
+// T Only controls RC Sketch, force 64 bit t digest
 fn plot_error_against_mem_usage<T>()
 where
     T: Float + Send + Sync + NumAssignOps + std::fmt::Debug,
 {
     let test_func =
         |value: T| move |digest: &mut dyn Digest<T>| digest.est_value_at_quantile(value);
+    let test_funcf64 =
+        |value: f64| move |digest: &mut dyn Digest<f64>| digest.est_value_at_quantile(value);
 
     let error_func = |a, b| {
         T::max(
@@ -905,6 +908,8 @@ where
             relative_error(a, b) * T::from(1e6).unwrap(),
         )
     };
+
+    let error_funcf64 = |a: f64, b: f64| f64::max(1.0, relative_error(a, b) * 1e6);
 
     let create_rcsketch = |accuracy_param: T| {
         move |dataset: &[T]| {
@@ -914,8 +919,8 @@ where
         }
     };
 
-    let create_t_digest = |compression_param: T| {
-        move |dataset: &[T]| {
+    let create_t_digest = |compression_param: f64| {
+        move |dataset: &[f64]| {
             let mut digest = TDigest::new(
                 &scale_functions::k2,
                 &scale_functions::inv_k2,
@@ -934,8 +939,8 @@ where
         .collect::<Vec<T>>();
     let t_digest_test_values = (4..14)
         // .iter()
-        .map(|x| T::from(1 << x).unwrap())
-        .collect::<Vec<T>>();
+        .map(|x| (1 << x) as f64)
+        .collect::<Vec<f64>>();
 
     let quantiles = [
         (1e-5, "X"),
@@ -945,10 +950,10 @@ where
         (1e-1, "■"),
     ]
     .iter()
-    .map(|(q, marker)| (T::from(*q).unwrap(), marker.to_string()))
-    .collect::<Vec<(T, String)>>();
+    .map(|(q, marker)| (f64::from(*q), marker.to_string()))
+    .collect::<Vec<(f64, String)>>();
 
-    let input_size = 100_000;
+    let input_size = 10_000_000;
     let rc_sketch_mem_size = |param| {
         let digest = create_rcsketch(param)(&gen_uniform_tan_vec(input_size));
         digest.owned_size()
@@ -967,9 +972,9 @@ where
                 let accuracy_measurements = sample_digest_accuracy(
                     create_rcsketch(*rcsketch_param),
                     || dataset_func(input_size),
-                    test_func(*quantile),
+                    test_func(T::from(*quantile).unwrap()),
                     error_func,
-                    100,
+                    20,
                 )
                 .unwrap();
                 s.push((
@@ -978,35 +983,46 @@ where
                 ));
             }
 
-            series.push(Line {
-                name: format!("RCSketch, q = 1e{:?}", quantile.log10().to_i32().unwrap()),
-                datapoints: s,
-                colour: &RED,
-                marker: Some(marker.clone()),
-            });
+            series.push(
+                Line {
+                    name: format!("RCSketch, q = 1e{:?}", quantile.log10()),
+                    datapoints: s,
+                    colour: &RED,
+                    marker: Some(marker.clone()),
+                }
+                .into_line_f64(),
+            );
 
             let mut s = Vec::new();
             for t_digest_param in &t_digest_test_values {
                 let accuracy_measurements = sample_digest_accuracy(
                     create_t_digest(*t_digest_param),
-                    || dataset_func(input_size),
-                    test_func(*quantile),
-                    error_func,
-                    100,
+                    || {
+                        dataset_func(input_size)
+                            .into_iter()
+                            .map(|x| x.to_f64().unwrap())
+                            .collect::<Vec<f64>>()
+                    },
+                    test_funcf64(*quantile),
+                    error_funcf64,
+                    20,
                 )
                 .unwrap();
                 s.push((
-                    T::from(t_digest_mem_size(*t_digest_param)).unwrap(),
+                    t_digest_mem_size(*t_digest_param) as f64,
                     accuracy_measurements,
                 ));
             }
 
-            series.push(Line {
-                name: format!("t-Digest, q = 1e{:?}", quantile.log10().to_i32().unwrap()),
-                datapoints: s,
-                colour: &BLUE,
-                marker: Some(marker.clone()),
-            });
+            series.push(
+                Line {
+                    name: format!("t-Digest, q = 1e{:?}", quantile.log10()),
+                    datapoints: s,
+                    colour: &BLUE,
+                    marker: Some(marker.clone()),
+                }
+                .into_line_f64(),
+            );
         }
         plot_line_graph(
             &format!(
@@ -1015,7 +1031,7 @@ where
             ),
             series,
             &Path::new(&format!(
-                "plots/err_vs_mem_usage_for_est_quantile_from_value_{}.png",
+                "plots/err_vs_mem_usage_for_est_quantile_from_value_{}.svg",
                 dist_name.to_lowercase().replace(" ", "_")
             )),
             "Memory (bytes)",
@@ -1145,7 +1161,7 @@ where
                 ),
                 series,
                 &Path::new(&format!(
-                    "plots/err_vs_mem_usage_rcsketch_parallel_for_{}_{}.png",
+                    "plots/err_vs_mem_usage_rcsketch_parallel_for_{}_{}.svg",
                     est_name.to_lowercase().replace(" ", "_"),
                     dist_name.to_lowercase().replace(" ", "_")
                 )),
@@ -1195,7 +1211,7 @@ where
                 ),
                 series,
                 &Path::new(&format!(
-                    "plots/err_vs_mem_usage_tdigest_parallel_for_{}_{}.png",
+                    "plots/err_vs_mem_usage_tdigest_parallel_for_{}_{}.svg",
                     est_name.to_lowercase().replace(" ", "_"),
                     dist_name.to_lowercase().replace(" ", "_")
                 )),
@@ -1386,7 +1402,7 @@ where
                 ),
                 series,
                 &Path::new(&format!(
-                    "plots/err_vs_quantile_similarity_for_{}_{}.png",
+                    "plots/err_vs_quantile_similarity_for_{}_{}.svg",
                     est_name.to_lowercase().replace(" ", "_"),
                     dist_name.to_lowercase().replace(" ", "_")
                 )),
@@ -1530,7 +1546,7 @@ where
                     || dataset_func(*input_size),
                     test_func(*quantile),
                     error_func,
-                    10,
+                    6,
                 )
                 .unwrap();
                 s.push((T::from(*input_size).unwrap(), accuracy_measurements));
@@ -1553,7 +1569,7 @@ where
                     || dataset_func(*input_size),
                     test_func(*quantile),
                     error_func,
-                    10,
+                    6,
                 )
                 .unwrap();
                 s.push((T::from(*input_size).unwrap(), accuracy_measurements));
@@ -1581,7 +1597,7 @@ where
                     },
                     test_func_f64(quantile.to_f64().unwrap()),
                     error_func_f64,
-                    10,
+                    6,
                 )
                 .unwrap();
                 s.push((*input_size as f64, accuracy_measurements));
@@ -1607,7 +1623,7 @@ where
                     || dataset_func(*input_size),
                     test_func(*quantile),
                     error_func,
-                    10,
+                    6,
                 )
                 .unwrap();
                 s.push((T::from(*input_size).unwrap(), accuracy_measurements));
@@ -1633,7 +1649,7 @@ where
             ),
             series,
             &Path::new(&format!(
-                "plots/err_vs_input_for_est_value_from_quantile_{}.png",
+                "plots/err_vs_input_for_est_value_from_quantile_{}.svg",
                 dist_name.to_lowercase().replace(" ", "_")
             )),
             "Input size",
@@ -1729,7 +1745,7 @@ where
     plot_line_graph(
         "Memory usage against compression/accuracy parameter",
         series,
-        &Path::new("plots/mem_vs_comp_param.png"),
+        &Path::new("plots/mem_vs_comp_param.svg"),
         "Compression/Accuracy parameter",
         "Memory usage bytes",
         false,
@@ -1834,7 +1850,7 @@ where
     plot_line_graph(
         "Memory usage against input_size parameter",
         series,
-        &Path::new("plots/mem_vs_input_size.png"),
+        &Path::new("plots/mem_vs_input_size.svg"),
         "Input size",
         "Memory usage (bytes)",
         false,
@@ -1854,7 +1870,13 @@ fn relative_error<T>(measured: T, actual: T) -> T
 where
     T: Float,
 {
-    // println!("{} {}", measured, actual);
+//    println!(
+//        "{} {}  | {} {}",
+//        measured.to_f32().unwrap(),
+//        actual.to_f32().unwrap(),
+//        measured.to_f64().unwrap(),
+//        actual.to_f64().unwrap()
+//    );
     // if ((measured - actual).abs() / actual.abs() >= T::from(1.0).unwrap()) {
     //     println!(
     //         "Error {} {} {}",
@@ -1874,11 +1896,11 @@ fn main() {
     quantile_error_against_value::<f32>();
     // determine_required_parameter::<f32>();
     // determine_required_parameter::<f64>();
-    // plot_error_against_mem_usage::<f32>();
-    // plot_error_against_mem_usage_parallel::<f32>();
-    // plot_error_against_quantiles_full_range::<f32>();
-    // plot_error_against_input_size::<f32>();
-    // plot_memory_usage_against_compression_parameter::<f32>();
+    plot_error_against_mem_usage::<f32>();
+    plot_error_against_mem_usage_parallel::<f32>();
+    plot_error_against_quantiles_full_range::<f32>();
+    plot_error_against_input_size::<f32>();
+    plot_memory_usage_against_compression_parameter::<f32>();
     plot_memory_usage_against_input_size::<f32>();
     println!("Complete");
 }
