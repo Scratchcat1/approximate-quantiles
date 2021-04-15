@@ -20,7 +20,7 @@ fn buffered_t_digest_add_buffer_in_order_range(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(size), size, |b, &size| {
             let test_input = gen_asc_vec(size);
             b.iter(|| {
-                let inner_digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
+                let inner_digest = TDigest::new(&k1, &inv_k1, black_box(3000.0));
                 let mut buffered_digest = BufferedDigest::new(inner_digest, 40_000);
                 buffered_digest.add_buffer(&test_input);
             });
@@ -40,7 +40,7 @@ fn buffered_t_digest_add_buffer_uniform_range(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(size), size, |b, &size| {
             let test_input = gen_uniform_vec(size);
             b.iter(|| {
-                let inner_digest = TDigest::new(&k1, &inv_k1, black_box(20.0));
+                let inner_digest = TDigest::new(&k1, &inv_k1, black_box(3000.0));
                 let mut buffered_digest = BufferedDigest::new(inner_digest, 40_000);
                 buffered_digest.add_buffer(&test_input);
             });

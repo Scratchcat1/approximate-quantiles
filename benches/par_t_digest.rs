@@ -21,7 +21,7 @@ fn par_t_digest_add_buffer_in_order_range(c: &mut Criterion) {
             let test_input = gen_asc_vec(size);
             b.iter(|| {
                 let mut digest =
-                    ParTDigest::new(10000, 50000, &|| TDigest::new(&k1, &inv_k1, 50.0));
+                    ParTDigest::new(10000, 50000, &|| TDigest::new(&k1, &inv_k1, 3000.0));
                 digest.add_buffer(&test_input);
             });
         });
@@ -40,7 +40,7 @@ fn par_t_digest_add_buffer_uniform_range(c: &mut Criterion) {
             let test_input = gen_uniform_vec(size);
             b.iter(|| {
                 let mut digest =
-                    ParTDigest::new(10000, 50000, &|| TDigest::new(&k1, &inv_k1, 50.0));
+                    ParTDigest::new(10000, 50000, &|| TDigest::new(&k1, &inv_k1, 3000.0));
                 digest.add_buffer(&test_input);
             });
         });

@@ -171,7 +171,7 @@ fn t_digest_comparison_uniform_range(c: &mut Criterion) {
                     .unwrap();
                 pool.install(|| {
                     b.iter(|| {
-                        let mut digest = TDigest::new(&k1, &inv_k1, black_box(50.0));
+                        let mut digest = TDigest::new(&k1, &inv_k1, black_box(3000.0));
                         digest.add_centroid_buffer(test_input.clone());
                     });
                 });
@@ -181,7 +181,7 @@ fn t_digest_comparison_uniform_range(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("add_buffer", size), &size, |b, &size| {
             let test_input = gen_uniform_centroid_vec(size);
             b.iter(|| {
-                let mut digest = TDigest::new(&k1, &inv_k1, black_box(50.0));
+                let mut digest = TDigest::new(&k1, &inv_k1, black_box(3000.0));
                 digest.add_centroid_buffer(test_input.clone());
             });
         });
@@ -189,7 +189,7 @@ fn t_digest_comparison_uniform_range(c: &mut Criterion) {
         //        group.bench_with_input(BenchmarkId::new("add_cluster", size), &size, |b, &size| {
         //            let test_input = gen_uniform_centroid_vec(size);
         //            b.iter(|| {
-        //                let mut digest = TDigest::new(&k1, &inv_k1, black_box(50.0));
+        //                let mut digest = TDigest::new(&k1, &inv_k1, black_box(3000.0));
         //                digest.add_cluster(test_input.clone(), 10.0);
         //            });
         //        });
@@ -197,7 +197,7 @@ fn t_digest_comparison_uniform_range(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("buffered", size), &size, |b, &size| {
             let test_input = gen_uniform_vec(size);
             b.iter(|| {
-                let inner_digest = TDigest::new(&k1, &inv_k1, black_box(50.0));
+                let inner_digest = TDigest::new(&k1, &inv_k1, black_box(3000.0));
                 let mut buffered_digest = BufferedDigest::new(inner_digest, 40_000);
                 buffered_digest.add_buffer(&test_input);
             });
@@ -207,7 +207,7 @@ fn t_digest_comparison_uniform_range(c: &mut Criterion) {
             let test_input = gen_uniform_vec(size);
             b.iter(|| {
                 let mut digest =
-                    ParTDigest::new(10_000, 50_000, &|| TDigest::new(&k1, &inv_k1, 50.0));
+                    ParTDigest::new(10_000, 50_000, &|| TDigest::new(&k1, &inv_k1, 3000.0));
                 digest.add_buffer(&test_input);
             });
         });
@@ -217,7 +217,7 @@ fn t_digest_comparison_uniform_range(c: &mut Criterion) {
             b.iter(|| {
                 let mut digest = ParallelDigest::new(
                     (0..num_cpus::get())
-                        .map(|_| TDigest::new(&k1, &inv_k1, black_box(50.0)))
+                        .map(|_| TDigest::new(&k1, &inv_k1, black_box(3000.0)))
                         .collect(),
                 );
                 digest.add_buffer(&test_input);
