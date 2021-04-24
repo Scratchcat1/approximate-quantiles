@@ -1620,7 +1620,7 @@ where
                         quantile.log10().to_i32().unwrap()
                     ),
                     datapoints: s,
-                    colour: &BLUE,
+                    colour: &BLACK,
                     marker: Some(marker.clone()),
                 }
                 .into_line_f64(),
