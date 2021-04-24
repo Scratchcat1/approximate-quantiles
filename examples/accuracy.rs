@@ -13,6 +13,7 @@ use approximate_quantiles::util::{
 use num_traits::{Float, NumAssignOps};
 use plotters::data::fitting_range;
 use plotters::prelude::*;
+use plotters::style::SizeDesc;
 use std::error::Error;
 use std::path::Path;
 
@@ -122,12 +123,16 @@ where
         .set_label_area_size(LabelAreaPosition::Bottom, 40)
         .build_cartesian_2d(x_values[..].into_segmented(), y_values_range)?;
 
+    let font = FontDesc::new(FontFamily::SansSerif, 19.0, FontStyle::Normal);
+
     chart
         .configure_mesh()
         .disable_x_mesh()
         .disable_y_mesh()
         .x_desc(x_label)
         .y_desc(y_label)
+        .label_style(font.clone())
+        .axis_desc_style(font.clone())
         .draw()?;
 
     let mut offsets = (-24..).step_by(24);
@@ -148,6 +153,7 @@ where
 
     chart
         .configure_series_labels()
+        .label_font(font.clone())
         .border_style(&BLACK)
         .background_style(&WHITE.mix(0.8))
         .draw()
@@ -252,6 +258,7 @@ where
             (min_y.to_f64().unwrap() + 1e-4..max_y.to_f64().unwrap()).log_scale(),
         )?;
 
+    let font = FontDesc::new(FontFamily::SansSerif, 19.0, FontStyle::Normal);
     chart
         .configure_mesh()
         .disable_x_mesh()
@@ -259,6 +266,8 @@ where
         .x_labels(30)
         .x_desc(x_label)
         .y_desc(y_label)
+        .label_style(font.clone())
+        .axis_desc_style(font.clone())
         .draw()?;
 
     series.iter().for_each(|s| {
@@ -362,6 +371,7 @@ where
 
     chart
         .configure_series_labels()
+        .label_font(font.clone())
         .border_style(&BLACK)
         .background_style(&WHITE.mix(0.8))
         .draw()
@@ -1870,13 +1880,13 @@ fn relative_error<T>(measured: T, actual: T) -> T
 where
     T: Float,
 {
-//    println!(
-//        "{} {}  | {} {}",
-//        measured.to_f32().unwrap(),
-//        actual.to_f32().unwrap(),
-//        measured.to_f64().unwrap(),
-//        actual.to_f64().unwrap()
-//    );
+    //    println!(
+    //        "{} {}  | {} {}",
+    //        measured.to_f32().unwrap(),
+    //        actual.to_f32().unwrap(),
+    //        measured.to_f64().unwrap(),
+    //        actual.to_f64().unwrap()
+    //    );
     // if ((measured - actual).abs() / actual.abs() >= T::from(1.0).unwrap()) {
     //     println!(
     //         "Error {} {} {}",
