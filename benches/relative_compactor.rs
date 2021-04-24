@@ -85,7 +85,7 @@ fn relative_compactor_comparison_uniform_range(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("default", size), &size, |b, &size| {
             let test_input = gen_uniform_vec::<f64>(size);
             b.iter(|| {
-                let mut sketch = RCSketch::new(size as usize, 64);
+                let mut sketch = RCSketch::new(size as usize, 32);
                 test_input.iter().map(|x| sketch.add(*x)).for_each(drop);
             });
         });
@@ -99,7 +99,7 @@ fn relative_compactor_comparison_uniform_range(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("buffer", size), &size, |b, &size| {
             let test_input = gen_uniform_vec::<f64>(size);
             b.iter(|| {
-                let mut sketch = RCSketch::new(size as usize, 64);
+                let mut sketch = RCSketch::new(size as usize, 32);
                 sketch.add_buffer(&test_input)
             });
         });
@@ -111,7 +111,7 @@ fn relative_compactor_comparison_uniform_range(c: &mut Criterion) {
                 b.iter(|| {
                     let mut sketch = ParallelDigest::new(
                         (0..num_cpus::get())
-                            .map(|_| RCSketch::new(size as usize, 64))
+                            .map(|_| RCSketch::new(size as usize, 32))
                             .collect(),
                     );
                     sketch.add_buffer(&test_input)
@@ -125,7 +125,7 @@ fn relative_compactor_comparison_uniform_range(c: &mut Criterion) {
                 let test_input = gen_uniform_vec::<f64>(size);
                 b.iter(|| {
                     let mut sketch = ParallelDigest::new(
-                        (0..num_cpus::get()).map(|_| RCSketch2::new(64)).collect(),
+                        (0..num_cpus::get()).map(|_| RCSketch2::new(32)).collect(),
                     );
                     sketch.add_buffer(&test_input)
                 });
@@ -134,7 +134,7 @@ fn relative_compactor_comparison_uniform_range(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("buffer_fast", size), &size, |b, &size| {
             let test_input = gen_uniform_vec::<f64>(size);
             b.iter(|| {
-                let mut sketch = RCSketch::new(size as usize, 64);
+                let mut sketch = RCSketch::new(size as usize, 32);
                 sketch.add_buffer_fast(&test_input);
             });
         });
